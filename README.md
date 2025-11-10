@@ -1,5 +1,5 @@
-<p align="center" style="background-color:white; padding:10px;">
-  <img src="docs/assets/SPLACE.svg" alt="SPLACE Logo" width="50%">
+<p align="center">
+  <img src="docs/assets/SPLACE.svg" alt="SPLACE Logo" width="50%" style="background-color:#EEEEEE; padding:10px; border-radius:10px;">
 </p>
 
 # SPLACE
