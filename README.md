@@ -1,9 +1,13 @@
 <p align="center">
-  <img src="docs/assets/SPLACE.svg" alt="SPLACE Logo" width="50%" style="background-color:#EEEEEE; padding:10px; border-radius:10px;">
+  <img src="docs/assets/SPLACE.png" alt="SPLACE Logo" width="50%">
 </p>
 
-# SPLACE
-A tool to SPLit, Align and ConcatenatE genes sequences for phylogenetic inference.
+# SPLACE (**SP**Lit, **A**lign and **C**oncatenat**E**)
+A python tool to **SP**Lit, **A**lign and **C**oncatenat**E** genes sequences for phylogenetic inference.
+
+## Description
+This project is a Fork of the original SPLACE repository (https://github.com/reinator/splace/)
+
 
 Cite:
 
