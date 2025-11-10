@@ -31,10 +31,11 @@ For more details, please see the [GPL-3.0 License](LICENSE).
 Before you run **SPLACE**, make sure you have the following prerequisites installed on your system:
 - **Python Environment**
     - Python **version 3.12 or higher**
-    - conda (optional)
+    - conda (optional, but recommended for managing dependencies)
+    - singularity or docker (optional, for containerized execution)
+- **Required Software and Libraries**
 - Dependencies (automatically installed with pip) 
-    - `requests`
-    - `pandas`
+    - `syngenes`
     - `biopython`
-    - `openpyxl`
+    - `mafft`
 ***  
