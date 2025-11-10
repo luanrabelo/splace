@@ -1,5 +1,9 @@
+<p align="center" style="background-color:white; padding:10px;">
+  <img src="docs/assets/SPLACE.svg" alt="SPLACE Logo" width="50%">
+</p>
+
 # SPLACE
-A tool to SPLit, Align and ConcatenatE genes sequences for phylogenetic inference.\
+A tool to SPLit, Align and ConcatenatE genes sequences for phylogenetic inference.
 
 Cite:
 
