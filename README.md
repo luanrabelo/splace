@@ -130,20 +130,20 @@ Below is an intuitive end-to-end view of how SPLACE processes your sequence data
 
 ```mermaid
 flowchart LR
-  A[Input Directory\nGenBank (.gbff) or Fasta (.fasta)] --> B{Format Flag\n--genbank / --fasta}
+  A[Input Directory<br/>GenBank (.gbff) or Fasta (.fasta)] --> B{Format Flag<br/>--genbank / --fasta}
   B --> C[Parse & Extract Sequences]
-  C --> D[Standardize Gene Names\n(SynGenes)]
-  D --> E[Split by Gene\nCreate per-marker FASTA]
+  C --> D[Standardize Gene Names<br/>(SynGenes)]
+  D --> E[Split by Gene<br/>Create per-marker FASTA]
   E --> F{--mafft?}
-  F -->|Yes| G[Multiple Sequence Alignment\n(MAFFT per marker)]
+  F -->|Yes| G[Multiple Sequence Alignment<br/>(MAFFT per marker)]
   F -->|No| H[Skip Alignment]
   G --> I{--trimal?}
   H --> I
-  I -->|Yes| J[Trim Alignments\n(TrimAl)]
+  I -->|Yes| J[Trim Alignments<br/>(TrimAl)]
   I -->|No| K[Use Raw (or Aligned) Sequences]
-  J --> L[Concatenate Markers\nBuild NEXUS Matrix]
+  J --> L[Concatenate Markers<br/>Build NEXUS Matrix]
   K --> L
-  L --> M[Compress Outputs\nZIP per-marker + Matrix]
+  L --> M[Compress Outputs<br/>ZIP per-marker + Matrix]
   M --> N[Results Directory]
 ```
 
