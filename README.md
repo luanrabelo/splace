@@ -129,22 +129,59 @@ splace.py --help
 Below is an intuitive end-to-end view of how SPLACE processes your sequence data. You start by choosing the input format (GenBank or Fasta), then SPLACE standardizes gene names, splits per marker, optionally aligns and trims, and finally concatenates the alignments into a phylogenetic-ready matrix.
 
 ```mermaid
-flowchart LR
-  A[Input Directory: GenBank or Fasta files] --> B{Format Flag: --genbank or --fasta}
-  B --> C[Parse and Extract Sequences]
-  C --> D[Standardize Gene Names with SynGenes]
-  D --> E[Split by Gene: create per-marker FASTA]
-  E --> F{Run MAFFT?}
-  F -->|Yes| G[Multiple Sequence Alignment - MAFFT per marker]
-  F -->|No| H[Skip Alignment]
-  G --> I{Run TrimAl?}
-  H --> I
-  I -->|Yes| J[Trim Alignments with TrimAl]
-  I -->|No| K[Use Raw or Aligned Sequences]
-  J --> L[Concatenate Markers: build NEXUS matrix]
-  K --> L
-  L --> M[Compress Outputs: ZIP per-marker and matrix]
-  M --> N[Results Directory]
+---
+config:
+  theme: neo
+  look: handDrawn
+---
+stateDiagram-v2
+  [*] --> InputDirectory
+  state "Input Directory: GenBank or Fasta files" as InputDirectory
+  InputDirectory --> FormatFlag
+  state "Format Flag: --genbank or --fasta" as FormatFlag
+  FormatFlag --> ParseExtract
+  state "Parse and Extract Sequences" as ParseExtract
+  ParseExtract --> Standardize
+  state "Standardize Gene Names (SynGenes)" as Standardize
+  Standardize --> SplitGene
+  state "Split by Gene (per-marker FASTA)" as SplitGene
+  SplitGene --> MAFFTChoice
+  state "Run MAFFT?" as MAFFTChoice <<choice>>
+  MAFFTChoice --> MultipleAlignment: Yes
+  MAFFTChoice --> SkipAlignment: No
+  state "Multiple Sequence Alignment (MAFFT per marker)" as MultipleAlignment
+  state "Skip Alignment" as SkipAlignment
+  MultipleAlignment --> TrimAlChoice
+  SkipAlignment --> TrimAlChoice
+  state "Run TrimAl?" as TrimAlChoice <<choice>>
+  TrimAlChoice --> Trimmed: Yes
+  TrimAlChoice --> RawOrAligned: No
+  state "Trim Alignments (TrimAl)" as Trimmed
+  state "Use Raw or Aligned Sequences" as RawOrAligned
+  Trimmed --> Concatenate
+  RawOrAligned --> Concatenate
+  state "Concatenate Markers (build NEXUS matrix)" as Concatenate
+  Concatenate --> Compress
+  state "Compress Outputs (ZIP per-marker & matrix)" as Compress
+  Compress --> Results
+  state "Results Directory" as Results
+  Results --> [*]
+
+  ' Styling each state (Mermaid supports style for nodes) 
+  style InputDirectory fill:#DEFFF8,stroke:#46EDC8,color:#378E7A,stroke-width:1px
+  style FormatFlag fill:#DEFFF8,stroke:#46EDC8,color:#378E7A,stroke-width:1px
+  style ParseExtract fill:#DEFFF8,stroke:#46EDC8,color:#378E7A,stroke-width:1px
+  style Standardize fill:#DEFFF8,stroke:#46EDC8,color:#378E7A,stroke-width:1px
+  style SplitGene fill:#DEFFF8,stroke:#46EDC8,color:#378E7A,stroke-width:1px
+  style MAFFTChoice fill:#EEEEEE,stroke:#999999,color:#000000,stroke-width:1px
+  style MultipleAlignment fill:#DEFFF8,stroke:#46EDC8,color:#378E7A,stroke-width:1px
+  style SkipAlignment fill:#DEFFF8,stroke:#46EDC8,color:#378E7A,stroke-width:1px
+  style TrimAlChoice fill:#EEEEEE,stroke:#999999,color:#000000,stroke-width:1px
+  style Trimmed fill:#DEFFF8,stroke:#46EDC8,color:#378E7A,stroke-width:1px
+  style RawOrAligned fill:#DEFFF8,stroke:#46EDC8,color:#378E7A,stroke-width:1px
+  style Concatenate fill:#DEFFF8,stroke:#46EDC8,color:#378E7A,stroke-width:1px
+  style Compress fill:#DEFFF8,stroke:#46EDC8,color:#378E7A,stroke-width:1px
+  style Results fill:#DEFFF8,stroke:#46EDC8,color:#378E7A,stroke-width:1px
 ```
 
 ### Main Stages
