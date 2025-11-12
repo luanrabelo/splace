@@ -40,16 +40,18 @@ For more details, please see the [GPL-3.0 License](LICENSE).
 ### Prerequisites
 Before you run **SPLACE**, make sure you have the following prerequisites installed on your system:
 - **Python Environment and Package Manager**
-    - Python **version 3.12 or higher**
-    - conda
-    - git
-    - singularity or docker (optional, but recommended for containerized execution)
+    - Python **version 3.12 or higher**[^1]
+    - conda[^1]
+    - git[^1]
+    - singularity or docker[^2]
 - **Required Software and Libraries**
     - `biopython` # For biological sequence handling and parsing
     - `syngenes`  # For gene nomenclature standardization
     - `mafft`     # For multiple sequence alignment
     - `trimal`    # For automated alignment trimming
     - `openpyxl`  # For Excel file handling
+[^1]: These prerequisites are essential for running SPLACE effectively. Please ensure they are installed and properly configured on your system.
+[^2]: Singularity or Docker is recommended for containerized execution, which can help manage dependencies and ensure consistent environments across different systems.
 &nbsp;
 ## Installation
 ##### [:rocket: Go to Contents Overview](#contents-overview)
@@ -64,22 +66,32 @@ cd SPLACE
 conda env create -f environment.yml
 ```
 &nbsp;
-- 2.3. Activate the conda environment:
+- 2.3. Activate the conda environment before running **SPLACE**:
 ```shell
 conda activate splace_env
 ```
 > [!NOTE]
 > This will **clone the repository**, then you should navigate to the cloned directory to create the conda environment using the provided `environment.yml` file.
 > After installation, activate the conda environment with: `conda activate splace_env`
+#### Docker
+1. Download and install Docker from [https://docs.docker.com/get-docker/](https://docs.docker.com/get-docker/).
+2. Test the installation by running:
+```shell
+docker --version
+```
+> [!NOTE]
+> Docker image for SPLACE is automatically built using the provided Dockerfile to facilitate easy setup and execution without manual dependency management.
+
 &nbsp;  
 ## Usage
 #### Parameter Overview
 ##### [:rocket: Go to Contents Overview](#contents-overview)
 | Parameter | Description |
 |-----------|-----------|
-| `--input` | Path to the directory containing **GenBank** or **Fasta** files. |
-| `--output` | Path to the output directory where results will be saved. All marker files will be stored in zipped format, containing aligned and trimmed sequences, and a concatenated matrix, in **NEXUS** format for phylogenetic analysis. |
-| `-t` | Number of threads to use for parallel processing. |
+| `-i`, `--input_dir` | Path to the directory containing **GenBank** or **Fasta** files. |
+| `-o`, `--output_dir` | Path to the output directory where results will be saved. All marker files will be stored in zipped format, containing aligned and trimmed sequences, and a concatenated matrix, in **NEXUS** format for phylogenetic analysis. |
+| `-et`, `--env_type` | Type of environment to be used. Choose between 'docker', 'singularity', or 'conda'. Default is 'conda'. |
+| `-t`, `--threads` | Number of threads to use for parallel processing. |
 | `--genbank` | Flag to indicate that the input files are in **GenBank** format. |
 | `--fasta` | Flag to indicate that the input files are in **Fasta** format. |
 | `--mafft` | Flag to enable multiple sequence alignment using **MAFFT**. |
@@ -88,13 +100,13 @@ conda activate splace_env
 #### Example Command
 ##### [:rocket: Go to Contents Overview](#contents-overview)
 After installing **SPLACE** and activating the conda environment, you can run the tool using the command line interface. Here’s a basic example of how to use **SPLACE**:
-- Run the following command in your terminal for processing **GenBank** files with **MAFFT** and **TrimAl**:
+- Run the following command in your terminal for processing **GenBank** files with **MAFFT** and **TrimAl** using 8 threads and conda environment:
 ```shell
-splace.py --input /path/to/your/gb_files --output /path/to/your/your_output_directory -t 8 --genbank --mafft --trimal
+splace.py -i /path/to/your/gb_files -o /path/to/your/your_output_directory -t 8 --genbank --mafft --trimal --env_type conda
 ```
 - For processing **Fasta** files, use the following command:
 ```shell
-splace.py --input /path/to/your/fasta_files --output /path/to/your/your_output_directory -t 8 --fasta --mafft --trimal
+splace.py -i /path/to/your/fasta_files -o /path/to/your/your_output_directory -t 8 --fasta --mafft --trimal --env_type conda
 ```
 > [!NOTE]
 > Make sure to replace `/path/to/your/gb_files`, `/path/to/your/fasta_files`, and `/path/to/your/your_output_directory` with the actual paths on your system.  
@@ -131,57 +143,164 @@ Below is an intuitive end-to-end view of how SPLACE processes your sequence data
 ```mermaid
 ---
 config:
-  theme: neo
-  look: handDrawn
+  theme: base
+  look: classic
 ---
 stateDiagram-v2
+  direction TB
+
   [*] --> InputDirectory
-  state "Input Directory: GenBank or Fasta files" as InputDirectory
+  state "Input Directory: GenBank or FASTA files" as InputDirectory
+
   InputDirectory --> FormatFlag
   state "Format Flag: --genbank or --fasta" as FormatFlag
-  FormatFlag --> ParseExtract
+
+  FormatFlag --> DispatchIO
+  state "Scan and Dispatch I/O Workers" as DispatchIO
+  note right of DispatchIO
+    Scans the folder, spawns nonblocking read and parse tasks per file
+  end note
+
+  DispatchIO --> ForkIO
+  state ForkIO <<fork>>
+
+  ForkIO --> ParseExtract
   state "Parse and Extract Sequences" as ParseExtract
-  ParseExtract --> Standardize
+
+  ForkIO --> QC
+  state "Quality Check, headers and duplicates" as QC
+
+  ParseExtract --> JoinIO
+  QC --> JoinIO
+  state JoinIO <<join>>
+
+  JoinIO --> Standardize
   state "Standardize Gene Names (SynGenes)" as Standardize
+
   Standardize --> SplitGene
-  state "Split by Gene (per-marker FASTA)" as SplitGene
-  SplitGene --> MAFFTChoice
-  state "Run MAFFT?" as MAFFTChoice <<choice>>
-  MAFFTChoice --> MultipleAlignment: Yes
-  MAFFTChoice --> SkipAlignment: No
-  state "Multiple Sequence Alignment (MAFFT per marker)" as MultipleAlignment
-  state "Skip Alignment" as SkipAlignment
-  MultipleAlignment --> TrimAlChoice
-  SkipAlignment --> TrimAlChoice
-  state "Run TrimAl?" as TrimAlChoice <<choice>>
-  TrimAlChoice --> Trimmed: Yes
-  TrimAlChoice --> RawOrAligned: No
-  state "Trim Alignments (TrimAl)" as Trimmed
-  state "Use Raw or Aligned Sequences" as RawOrAligned
-  Trimmed --> Concatenate
-  RawOrAligned --> Concatenate
+  state "Split by Gene (per marker FASTA)" as SplitGene
+
+  SplitGene --> ForkMarkers
+  state ForkMarkers <<fork>>
+  note right of ForkMarkers
+    Launches one independent pipeline per marker in parallel
+  end note
+
+  ForkMarkers --> MarkerA
+  ForkMarkers --> MarkerB
+  ForkMarkers --> MarkerC
+
+  %% ====== Marker A pipeline ======
+  state "Marker A, async pipeline" as MarkerA {
+    [*] --> MAFFTChoice_A
+    state "Run MAFFT?" as MAFFTChoice_A <<choice>>
+    MAFFTChoice_A --> MultipleAlignment_A: Yes
+    MAFFTChoice_A --> SkipAlignment_A: No
+
+    state "Multiple Sequence Alignment (MAFFT)" as MultipleAlignment_A
+    state "Skip Alignment" as SkipAlignment_A
+
+    MultipleAlignment_A --> TrimAlChoice_A
+    SkipAlignment_A --> TrimAlChoice_A
+
+    state "Run TrimAl?" as TrimAlChoice_A <<choice>>
+    TrimAlChoice_A --> Trimmed_A: Yes
+    TrimAlChoice_A --> RawOrAligned_A: No
+
+    state "Trim Alignments (TrimAl)" as Trimmed_A
+    state "Use Raw or Aligned Sequences" as RawOrAligned_A
+
+    Trimmed_A --> [*]
+    RawOrAligned_A --> [*]
+  }
+
+  %% ====== Marker B pipeline ======
+  state "Marker B, async pipeline" as MarkerB {
+    [*] --> MAFFTChoice_B
+    state "Run MAFFT?" as MAFFTChoice_B <<choice>>
+    MAFFTChoice_B --> MultipleAlignment_B: Yes
+    MAFFTChoice_B --> SkipAlignment_B: No
+
+    state "Multiple Sequence Alignment (MAFFT)" as MultipleAlignment_B
+    state "Skip Alignment" as SkipAlignment_B
+
+    MultipleAlignment_B --> TrimAlChoice_B
+    SkipAlignment_B --> TrimAlChoice_B
+
+    state "Run TrimAl?" as TrimAlChoice_B <<choice>>
+    TrimAlChoice_B --> Trimmed_B: Yes
+    TrimAlChoice_B --> RawOrAligned_B: No
+
+    state "Trim Alignments (TrimAl)" as Trimmed_B
+    state "Use Raw or Aligned Sequences" as RawOrAligned_B
+
+    Trimmed_B --> [*]
+    RawOrAligned_B --> [*]
+  }
+
+  %% ====== Marker C pipeline ======
+  state "Marker C, async pipeline" as MarkerC {
+    [*] --> MAFFTChoice_C
+    state "Run MAFFT?" as MAFFTChoice_C <<choice>>
+    MAFFTChoice_C --> MultipleAlignment_C: Yes
+    MAFFTChoice_C --> SkipAlignment_C: No
+
+    state "Multiple Sequence Alignment (MAFFT)" as MultipleAlignment_C
+    state "Skip Alignment" as SkipAlignment_C
+
+    MultipleAlignment_C --> TrimAlChoice_C
+    SkipAlignment_C --> TrimAlChoice_C
+
+    state "Run TrimAl?" as TrimAlChoice_C <<choice>>
+    TrimAlChoice_C --> Trimmed_C: Yes
+    TrimAlChoice_C --> RawOrAligned_C: No
+
+    state "Trim Alignments (TrimAl)" as Trimmed_C
+    state "Use Raw or Aligned Sequences" as RawOrAligned_C
+
+    Trimmed_C --> [*]
+    RawOrAligned_C --> [*]
+  }
+
+  MarkerA --> JoinMarkers
+  MarkerB --> JoinMarkers
+  MarkerC --> JoinMarkers
+  state JoinMarkers <<join>>
+
+  JoinMarkers --> Concatenate
   state "Concatenate Markers (build NEXUS matrix)" as Concatenate
+
   Concatenate --> Compress
-  state "Compress Outputs (ZIP per-marker & matrix)" as Compress
+  state "Compress Outputs (ZIP per marker and matrix)" as Compress
+
   Compress --> Results
   state "Results Directory" as Results
   Results --> [*]
 
-  ' Styling each state (Mermaid supports style for nodes) 
-  style InputDirectory fill:#DEFFF8,stroke:#46EDC8,color:#378E7A,stroke-width:1px
-  style FormatFlag fill:#DEFFF8,stroke:#46EDC8,color:#378E7A,stroke-width:1px
-  style ParseExtract fill:#DEFFF8,stroke:#46EDC8,color:#378E7A,stroke-width:1px
-  style Standardize fill:#DEFFF8,stroke:#46EDC8,color:#378E7A,stroke-width:1px
-  style SplitGene fill:#DEFFF8,stroke:#46EDC8,color:#378E7A,stroke-width:1px
-  style MAFFTChoice fill:#EEEEEE,stroke:#999999,color:#000000,stroke-width:1px
-  style MultipleAlignment fill:#DEFFF8,stroke:#46EDC8,color:#378E7A,stroke-width:1px
-  style SkipAlignment fill:#DEFFF8,stroke:#46EDC8,color:#378E7A,stroke-width:1px
-  style TrimAlChoice fill:#EEEEEE,stroke:#999999,color:#000000,stroke-width:1px
-  style Trimmed fill:#DEFFF8,stroke:#46EDC8,color:#378E7A,stroke-width:1px
-  style RawOrAligned fill:#DEFFF8,stroke:#46EDC8,color:#378E7A,stroke-width:1px
-  style Concatenate fill:#DEFFF8,stroke:#46EDC8,color:#378E7A,stroke-width:1px
-  style Compress fill:#DEFFF8,stroke:#46EDC8,color:#378E7A,stroke-width:1px
-  style Results fill:#DEFFF8,stroke:#46EDC8,color:#378E7A,stroke-width:1px
+  %% ====== Styles ======
+  style InputDirectory fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
+  style FormatFlag fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
+  style DispatchIO fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
+  style ParseExtract fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
+  style QC fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
+  style Standardize fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
+  style SplitGene fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
+  style MultipleAlignment_A fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
+  style SkipAlignment_A fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
+  style Trimmed_A fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
+  style RawOrAligned_A fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
+  style MultipleAlignment_B fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
+  style SkipAlignment_B fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
+  style Trimmed_B fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
+  style RawOrAligned_B fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
+  style MultipleAlignment_C fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
+  style SkipAlignment_C fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
+  style Trimmed_C fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
+  style RawOrAligned_C fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
+  style Concatenate fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
+  style Compress fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
+  style Results fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
+
 ```
 
 ### Main Stages
