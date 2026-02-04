@@ -1,0 +1,42 @@
+SynGenes/
+output/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+.venv
+env/
+venv/
+splace_env/
+
+# Distribution / Packaging
+dist/
+build/
+*.egg-info/
+*.log
+
+# Output directories (User specific)
+splace_output/
+input_files/
+
+# IDEs
+.vscode/
+.idea/
+
+# Benchmark
+benchmark.tsv
+
+# System
+.DS_Store
+Thumbs.db
+
+SPLACE_v2.py
+SPLACE_v3.py
+*.ipynb
+beachmark.py
+*.sif
+datasets/

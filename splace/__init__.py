@@ -1,0 +1,5 @@
+from .alignment.run_mafft_alignment import align_multiple_files
+from .read_genbank.genbank_handler import extract_multiple_genbanks
+from .read_fasta.fasta_handler import extract_multiple_fastas
+from .trimming.run_trimal import trim_multiple_files
+from .phylogeny.run_iqtree import run_phylogeny_pipeline

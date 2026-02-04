@@ -23,18 +23,39 @@
 &nbsp;
 ## System Overview
 ##### [:rocket: Go to Contents Overview](#contents-overview)
-**SPLACE** is a Python toolkit for splitting, aligning, and concatenating gene sequences in phylogenetic pipelines. 
-It integrates with **SynGenes** to standardize gene nomenclature across datasets, and uses asynchronous I/O and parallel alignment to accelerate large-scale workflows.
+**SPLACE** is a comprehensive Python toolkit designated to automate phylogenomic analysis pipelines. It handles gene splitting, alignment, trimming, and concatenation, and now supports direct phylogenetic tree inference.
+
+It integrates with **SynGenes** for gene name standardization, **MAFFT** for alignment, **TrimAl** for quality control, and **IQ-TREE** for phylogeny reconstruction, utilizing asynchronous I/O and parallel processing for high performance.
+
+**Key Features:**
+*   **Automatic Extraction:** Detects and extracts CDS from GenBank files or genes from FASTA headers suitable for SynGenes.
+*   **Gene Normalization:** Ensures consistent gene naming across datasets.
+*   **Alignment & Trimming:** Automated MSA and cleaning steps.
+*   **Phylogeny:** Supermatrix generation to NEXUS format and ML tree inference with IQ-TREE.
+*   **Benchmarking:** Metrics for pipeline performance analysis.
+
+### Version Comparison
+
+| Feature | SPLACE v2/v3 (Legacy) | SPLACE (New) |
+| :--- | :--- | :--- |
+| **Input Method** | Text file list | Automatic Directory Scan |
+| **Execution** | Sequential | Asynchronous & Parallel |
+| **Gene Normalization** | basic string split | **SynGenes** Integration |
+| **Phylogeny** | Concatenation Only | **IQ-TREE** Integration |
+| **Benchmarking** | Manual / Not Built-in | Native (`--benchmark`) |
+| **Language/Deps** | Python <3.10 | Python 3.12+ (Asyncio) |
+
 &nbsp;
 > [!NOTE]
-> This project is a fork of the original SPLACE repository, with enhancements for better performance and usability.
+> This project is an enhanced version of the original SPLACE repository.
 > See the original repository at [https://github.com/reinator/splace/](https://github.com/reinator/splace/)
+
 &nbsp;
 ## Licence
 ##### [:rocket: Go to Contents Overview](#contents-overview)
-**SPLACE** is released under the **GPL-3.0 License**. This license permits free use, modification, and distribution of the software, provided that any derivative works also adhere to the same license terms.
-For more details, please see the [GPL-3.0 License](LICENSE).
+**SPLACE** is released under the **GPL-3.0 License**.
 &nbsp;
+
 ## Getting Started
 ##### [:rocket: Go to Contents Overview](#contents-overview)
 ### Prerequisites
@@ -43,311 +64,116 @@ Before you run **SPLACE**, make sure you have the following prerequisites instal
     - Python **version 3.12 or higher**[^1]
     - conda[^1]
     - git[^1]
-    - singularity or docker[^2]
 - **Required Software and Libraries**
+    - `mafft`     # For multiple sequence alignment (REQUIRED for --align)
+    - `trimal`    # For automated alignment trimming (REQUIRED for --trimal)
+    - `iqtree`    # For phylogeny (REQUIRED for --iqtree)
     - `biopython` # For biological sequence handling and parsing
     - `syngenes`  # For gene nomenclature standardization
-    - `mafft`     # For multiple sequence alignment
-    - `trimal`    # For automated alignment trimming
-    - `openpyxl`  # For Excel file handling
-[^1]: These prerequisites are essential for running SPLACE effectively. Please ensure they are installed and properly configured on your system.
-[^2]: Singularity or Docker is recommended for containerized execution, which can help manage dependencies and ensure consistent environments across different systems.
+[^1]: These prerequisites are essential for running SPLACE effectively.
+
 &nbsp;
 ## Installation
 ##### [:rocket: Go to Contents Overview](#contents-overview)
-#### Conda
-1. Download and install Miniconda or Anaconda from [https://docs.conda.io/en/latest/miniconda.html](https://docs.conda.io/en/latest/miniconda.html) or [https://www.anaconda.com/products/distribution](https://www.anaconda.com/products/distribution) respectively.
-2. Clone the **SPLACE** repository and install the required dependencies by following these steps:
-- 2.1. Open the **Terminal**
-- 2.2. Execute the following command:
+#### Conda (Recommended)
+
+1. Clone the repository:
 ```shell
 git clone https://github.com/luanrabelo/SPLACE.git
 cd SPLACE  
+```
+
+2. Create and activate the environment:
+```shell
 conda env create -f environment.yml
+conda activate splace
 ```
-&nbsp;
-- 2.3. Activate the conda environment before running **SPLACE**:
-```shell
-conda activate splace_env
+
+#### Pip
+If you prefer not to use Conda:
+```bash
+pip install -e .
 ```
-> [!NOTE]
-> This will **clone the repository**, then you should navigate to the cloned directory to create the conda environment using the provided `environment.yml` file.
-> After installation, activate the conda environment with: `conda activate splace_env`
-#### Docker
-1. Download and install Docker from [https://docs.docker.com/get-docker/](https://docs.docker.com/get-docker/).
-2. Test the installation by running:
-```shell
-docker --version
-```
-> [!NOTE]
-> Docker image for SPLACE is automatically built using the provided Dockerfile to facilitate easy setup and execution without manual dependency management.
 
 &nbsp;  
 ## Usage
 #### Parameter Overview
 ##### [:rocket: Go to Contents Overview](#contents-overview)
-| Parameter | Description |
-|-----------|-----------|
-| `-i`, `--input_dir` | Path to the directory containing **GenBank** or **Fasta** files. |
-| `-o`, `--output_dir` | Path to the output directory where results will be saved. All marker files will be stored in zipped format, containing aligned and trimmed sequences, and a concatenated matrix, in **NEXUS** format for phylogenetic analysis. |
-| `-et`, `--env_type` | Type of environment to be used. Choose between 'docker', 'singularity', or 'conda'. Default is 'conda'. |
-| `-t`, `--threads` | Number of threads to use for parallel processing. |
-| `--genbank` | Flag to indicate that the input files are in **GenBank** format. |
-| `--fasta` | Flag to indicate that the input files are in **Fasta** format. |
-| `--mafft` | Flag to enable multiple sequence alignment using **MAFFT**. |
-| `--trimal` | Flag to enable automated alignment trimming using **TrimAl**. |
+
+The basic syntax is `python splace.py [input_dir] [output_dir] [options]`.
+
+| Parameter | Function | Description |
+|-----------|-----------|-------------|
+| `input_dir` | Input | Path to directory containing **GenBank** or **Fasta** files. |
+| `output_dir` | Output | Directory where results will be saved. |
+| `--gb-type` | Extraction | Type of Genbank data: `mt` (mitochondrial) or `cp` (chloroplast). Default: `mt`. |
+| `--align` | Alignment | Enable multiple sequence alignment using **MAFFT**. |
+| `--trimal` | Trimming | Enable trimming using **TrimAl**. |
+| `--iqtree` | Phylogeny | Enable phylogenetic inference using **IQ-TREE**. |
+| `--benchmark` | Performance | Enable execution time benchmarking. |
+| `-t`, `--threads` | Performance | Number of threads for parallel processing. Default: 4. |
+
 &nbsp;
 #### Example Command
 ##### [:rocket: Go to Contents Overview](#contents-overview)
-After installing **SPLACE** and activating the conda environment, you can run the tool using the command line interface. Here’s a basic example of how to use **SPLACE**:
-- Run the following command in your terminal for processing **GenBank** files with **MAFFT** and **TrimAl** using 8 threads and conda environment:
+After installing **SPLACE** and activating the conda environment:
+
+**Full Pipeline (Extract -> Align -> Trim -> Tree)**
 ```shell
-splace.py -i /path/to/your/gb_files -o /path/to/your/your_output_directory -t 8 --genbank --mafft --trimal --env_type conda
+python splace.py data/raw/ results/ --gb-type mt --align --trimal --iqtree --threads 8 --benchmark
 ```
-- For processing **Fasta** files, use the following command:
+
+**Extraction and Alignment Only**
 ```shell
-splace.py -i /path/to/your/fasta_files -o /path/to/your/your_output_directory -t 8 --fasta --mafft --trimal --env_type conda
+python splace.py data/raw/ results_aln/ --gb-type mt --align --threads 4
 ```
+
 > [!NOTE]
-> Make sure to replace `/path/to/your/gb_files`, `/path/to/your/fasta_files`, and `/path/to/your/your_output_directory` with the actual paths on your system.  
-> The `-t` parameter specifies the number of threads to use for parallel processing. Adjust this based on your system's capabilities.  
-> The `--mafft` and `--trimal` flags enable multiple sequence alignment and trimming, respectively. You can omit these flags if you do not wish to perform these steps.  
-> Do not use both `--genbank` and `--fasta` flags together; choose one based on your input file format.  
-> For more detailed usage instructions and additional options, refer to the help command:
-```shell
-splace.py --help
-```
+> The script automatically detects input file formats (.gb, .fasta, etc).
+> `--iqtree` requires `--trimal` to be active.
+
 &nbsp;
 > [!CAUTION]
 > For **Fasta files**, ensure that the sequence headers are formatted correctly to include gene names for proper processing by **SPLACE**.
-> Example header format:
+> Example header format with SynGenes support:
 > ```
-> > lcl|PX070005.1_cds_XZP64796.1_3 [gene=COX1] [protein=cytochrome c oxidase subunit I] [protein_id=XZP64796.1] [location=5509..7059] [gbkey=CDS]
-> ATGGC...
+> > lcl|PX070005.1_cds_XZP64796.1_3 [gene=COX1] ...
 > ```
-> In this example, the gene name is specified as `COX1` ([gene=COX1]) and after standardization by **SynGenes**, it will be recognized as `COI` and written accordingly in the output files. This example header is a standard format for GenBank-derived Fasta files.  
-> **Recommended practice is to use Fasta files generated from GenBank files to ensure compatibility.**  
-> Alternatively, for custom Fasta files, ensure the headers follow a similar structure to include the gene name, such as:
-> ```
-> > atp6_ITV1046I2 atp6 ATP synthase F0 subunit 6 7964:8638 forward
-> ATGGC...
-> ```
-> In this case, the header splits into parts, using spaces as delimiters, where the second part (`atp6`) indicates the gene name. After standardization, it will be recognized as `ATP6` in the output files.  
-> If your Fasta headers, after splitting by spaces, do not have the gene name in the second position, SPLACE uses the first part of the header as the gene name. This may lead to inconsistencies if the gene names are not standardized.
+> Or simple formats where the gene name is clear.
+
 &nbsp;
 ## SPLACE Workflow
 ##### [:rocket: Go to Contents Overview](#contents-overview)
 
-Below is an intuitive end-to-end view of how SPLACE processes your sequence data. You start by choosing the input format (GenBank or Fasta), then SPLACE standardizes gene names, splits per marker, optionally aligns and trims, and finally concatenates the alignments into a phylogenetic-ready matrix.
-
 ```mermaid
----
-config:
-  theme: base
-  look: classic
----
-stateDiagram-v2
-  direction TB
-
-  [*] --> InputDirectory
-  state "Input Directory: GenBank or FASTA files" as InputDirectory
-
-  InputDirectory --> FormatFlag
-  state "Format Flag: --genbank or --fasta" as FormatFlag
-
-  FormatFlag --> DispatchIO
-  state "Scan and Dispatch I/O Workers" as DispatchIO
-  note right of DispatchIO
-    Scans the folder, spawns nonblocking read and parse tasks per file
-  end note
-
-  DispatchIO --> ForkIO
-  state ForkIO <<fork>>
-
-  ForkIO --> ParseExtract
-  state "Parse and Extract Sequences" as ParseExtract
-
-  ForkIO --> QC
-  state "Quality Check, headers and duplicates" as QC
-
-  ParseExtract --> JoinIO
-  QC --> JoinIO
-  state JoinIO <<join>>
-
-  JoinIO --> Standardize
-  state "Standardize Gene Names (SynGenes)" as Standardize
-
-  Standardize --> SplitGene
-  state "Split by Gene (per marker FASTA)" as SplitGene
-
-  SplitGene --> ForkMarkers
-  state ForkMarkers <<fork>>
-  note right of ForkMarkers
-    Launches one independent pipeline per marker in parallel
-  end note
-
-  ForkMarkers --> MarkerA
-  ForkMarkers --> MarkerB
-  ForkMarkers --> MarkerC
-
-  %% ====== Marker A pipeline ======
-  state "Marker A, async pipeline" as MarkerA {
-    [*] --> MAFFTChoice_A
-    state "Run MAFFT?" as MAFFTChoice_A <<choice>>
-    MAFFTChoice_A --> MultipleAlignment_A: Yes
-    MAFFTChoice_A --> SkipAlignment_A: No
-
-    state "Multiple Sequence Alignment (MAFFT)" as MultipleAlignment_A
-    state "Skip Alignment" as SkipAlignment_A
-
-    MultipleAlignment_A --> TrimAlChoice_A
-    SkipAlignment_A --> TrimAlChoice_A
-
-    state "Run TrimAl?" as TrimAlChoice_A <<choice>>
-    TrimAlChoice_A --> Trimmed_A: Yes
-    TrimAlChoice_A --> RawOrAligned_A: No
-
-    state "Trim Alignments (TrimAl)" as Trimmed_A
-    state "Use Raw or Aligned Sequences" as RawOrAligned_A
-
-    Trimmed_A --> [*]
-    RawOrAligned_A --> [*]
-  }
-
-  %% ====== Marker B pipeline ======
-  state "Marker B, async pipeline" as MarkerB {
-    [*] --> MAFFTChoice_B
-    state "Run MAFFT?" as MAFFTChoice_B <<choice>>
-    MAFFTChoice_B --> MultipleAlignment_B: Yes
-    MAFFTChoice_B --> SkipAlignment_B: No
-
-    state "Multiple Sequence Alignment (MAFFT)" as MultipleAlignment_B
-    state "Skip Alignment" as SkipAlignment_B
-
-    MultipleAlignment_B --> TrimAlChoice_B
-    SkipAlignment_B --> TrimAlChoice_B
-
-    state "Run TrimAl?" as TrimAlChoice_B <<choice>>
-    TrimAlChoice_B --> Trimmed_B: Yes
-    TrimAlChoice_B --> RawOrAligned_B: No
-
-    state "Trim Alignments (TrimAl)" as Trimmed_B
-    state "Use Raw or Aligned Sequences" as RawOrAligned_B
-
-    Trimmed_B --> [*]
-    RawOrAligned_B --> [*]
-  }
-
-  %% ====== Marker C pipeline ======
-  state "Marker C, async pipeline" as MarkerC {
-    [*] --> MAFFTChoice_C
-    state "Run MAFFT?" as MAFFTChoice_C <<choice>>
-    MAFFTChoice_C --> MultipleAlignment_C: Yes
-    MAFFTChoice_C --> SkipAlignment_C: No
-
-    state "Multiple Sequence Alignment (MAFFT)" as MultipleAlignment_C
-    state "Skip Alignment" as SkipAlignment_C
-
-    MultipleAlignment_C --> TrimAlChoice_C
-    SkipAlignment_C --> TrimAlChoice_C
-
-    state "Run TrimAl?" as TrimAlChoice_C <<choice>>
-    TrimAlChoice_C --> Trimmed_C: Yes
-    TrimAlChoice_C --> RawOrAligned_C: No
-
-    state "Trim Alignments (TrimAl)" as Trimmed_C
-    state "Use Raw or Aligned Sequences" as RawOrAligned_C
-
-    Trimmed_C --> [*]
-    RawOrAligned_C --> [*]
-  }
-
-  MarkerA --> JoinMarkers
-  MarkerB --> JoinMarkers
-  MarkerC --> JoinMarkers
-  state JoinMarkers <<join>>
-
-  JoinMarkers --> Concatenate
-  state "Concatenate Markers (build NEXUS matrix)" as Concatenate
-
-  Concatenate --> Compress
-  state "Compress Outputs (ZIP per marker and matrix)" as Compress
-
-  Compress --> Results
-  state "Results Directory" as Results
-  Results --> [*]
-
-  %% ====== Styles ======
-  style InputDirectory fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
-  style FormatFlag fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
-  style DispatchIO fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
-  style ParseExtract fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
-  style QC fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
-  style Standardize fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
-  style SplitGene fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
-  style MultipleAlignment_A fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
-  style SkipAlignment_A fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
-  style Trimmed_A fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
-  style RawOrAligned_A fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
-  style MultipleAlignment_B fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
-  style SkipAlignment_B fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
-  style Trimmed_B fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
-  style RawOrAligned_B fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
-  style MultipleAlignment_C fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
-  style SkipAlignment_C fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
-  style Trimmed_C fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
-  style RawOrAligned_C fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
-  style Concatenate fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
-  style Compress fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
-  style Results fill:#EEEEEE,stroke:#FFFFFF,color:#202020,stroke-width:5px
-
+graph TD
+    A[Input Directory] -->|Scan| B{File Type?}
+    B -->|GenBank| C[Extract CDS/Features]
+    B -->|FASTA| D[Parse Headers]
+    C --> E[SynGenes Normalization]
+    D --> E
+    E -->|Split| F[Marker FASTAs]
+    F --> G{--align?}
+    G -->|Yes| H[MAFFT Alignment]
+    G -->|No| I[Raw Data]
+    H --> J{--trimal?}
+    J -->|Yes| K[TrimAl Trimming]
+    J -->|No| L[Aligned Data]
+    K --> M{--iqtree?}
+    L --> M
+    M -->|Yes| N[Concatenate NEXUS & IQ-TREE]
+    N --> O[Phylogenetic Tree]
 ```
-
-### Main Stages
-| Stage | What Happens | Generated Files |
-|-------|---------------|-----------------|
-| 1. Read | Reads GenBank or Fasta files according to the chosen flag. | (in memory) |
-| 2. Standardize | Uses SynGenes to normalize gene names (e.g., COX1 -> COI). | standardized temporary FASTA |
-| 3. Split | Creates an individual FASTA for each gene/marker. | `gene_name.fasta` per marker |
-| 4. Align (optional) | MAFFT runs in parallel for each marker. | `gene_name.aln.fasta` |
-| 5. Trim (optional) | TrimAl removes low-quality alignment regions. | `gene_name.trim.fasta` |
-| 6. Concatenate | Joins all markers into a concatenated matrix (NEXUS). | `concatenated_matrix.nexus` |
-| 7. Package | Groups markers (and alignments) and compresses. | `markers.zip`, `matrix.nexus` |
-
-### Final Output
-In the directory defined by `--output`, you'll find:
-- Zipped files containing per-marker FASTA (raw, aligned and/or trimmed depending on flags).
-- The concatenated matrix in NEXUS format ready for phylogenetic analysis.
-- Logs or auxiliary reports (if implemented in the version you are using).
-
-### Execution Decisions
-- Use `--genbank` to extract directly from rich annotations (recommended to preserve metadata).
-- Use `--fasta` when you already have clean FASTA files (ensure headers include the gene name in the expected position as described above).
-- Omitting `--mafft` skips the alignment step (useful for quick tests).
-- Omitting `--trimal` keeps full alignments (useful when you want to manually inspect regions before trimming).
-
-### Simplified Examples
-| Goal | Command |
-|------|---------|
-| Full GenBank pipeline | `splace.py --input data/gb --output results -t 8 --genbank --mafft --trimal` |
-| Split + concatenate (Fasta only) | `splace.py --input data/fasta --output results -t 4 --fasta` |
-| Align without trimming | `splace.py --input data/gb --output results -t 8 --genbank --mafft` |
-
-> Tip: Adjust `-t` (threads) according to available CPU cores. For many markers and large alignments, more threads speed up MAFFT.
-
 
 ## Citing **SPLACE**
 ##### [:rocket: Go to Contents Overview](#contents-overview)
-When referencing the **SPLACE** class, please cite it appropriately in your academic or professional work.
+When referencing the **SPLACE**, please cite:
 ```
-Oliveira, R. R., Vasconcelos, S., & Oliveira, G. (2022). SPLACE: A tool to automatically SPLit, Align, and ConcatenatE genes for phylogenomic inference of several organisms. Frontiers in Bioinformatics, 2.\
+Oliveira, R. R., Vasconcelos, S., & Oliveira, G. (2022). SPLACE: A tool to automatically SPLit, Align, and ConcatenatE genes for phylogenomic inference of several organisms. Frontiers in Bioinformatics, 2.
 https://doi.org/10.3389/fbinf.2022.1074802
 ```
 ***  
 ## Contact
 ##### [:rocket: Go to Contents Overview](#contents-overview)
-For reporting bugs, requesting assistance, or providing feedback, please reach out to **Luan Rabelo**:
-```
-luanrabelo@outlook.com
-```
+For reporting bugs or feedback, please reach out to **Luan Rabelo**: `luanrabelo@outlook.com`
 ***  

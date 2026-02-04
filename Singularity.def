@@ -1,0 +1,46 @@
+Bootstrap: docker
+From: continuumio/miniconda3:latest
+
+%labels
+    Maintainer Luan Rabelo
+    Version 1.0
+    Description SPLACE - Split, Align and Concatenate
+
+%files
+    environment.yml /opt/splace/environment.yml
+    splace.py /opt/splace/splace.py
+    splace /opt/splace/splace
+
+%post
+    # Initialize Conda
+    . /opt/conda/etc/profile.d/conda.sh
+
+    # Update conda
+    conda update -n base -c defaults conda -y
+
+    # Create the environment with dependencies
+    cd /opt/splace
+    conda env create -f environment.yml
+
+    # Cleanup to reduce image size
+    conda clean --all -y
+
+%environment
+    # Set the path to the conda environment
+    export PATH=/opt/conda/envs/splace_env/bin:$PATH
+    export PYTHONPATH=/opt/splace:$PYTHONPATH
+    export LC_ALL=C
+
+%runscript
+    # The default command when 'singularity run' is executed
+    # usage: singularity run splace.sif <input_dir> <output_dir> [options]
+    exec python /opt/splace/splace.py "$@"
+
+%help
+    This container runs the SPLACE pipeline.
+    
+    Basic Usage:
+        singularity run splace.sif <input_dir> <output_dir> [options]
+    
+    Example:
+        singularity run --bind ./data:/data,./out:/out splace.sif /data /out --align --trimal --iqtree --threads 12 --benchmark

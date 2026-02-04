@@ -1,0 +1,37 @@
+package:
+  name: "splace"
+  version: "4.0.0"
+
+source:
+  path: ../
+
+build:
+  noarch: python
+  script: "{{ PYTHON }} -m pip install . --no-deps -vv"
+
+requirements:
+  host:
+    - python >=3.12
+    - pip
+    - setuptools
+  run:
+    - python >=3.12
+    - biopython
+    - iqtree
+    - syngenes
+    - mafft
+    - trimal
+
+about:
+  home: "https://github.com/luanrabelo/splace"
+  license: "GPL-3.0"
+  license_family: GPL
+  summary: "A Python class for standardizing mitochondrial and chloroplast gene nomenclatures."
+  description: |
+    **SPLACE** is a comprehensive Python toolkit designated to automate phylogenomic analysis pipelines. It handles gene splitting, alignment, trimming, and concatenation, and now supports direct phylogenetic tree inference. It integrates with **SynGenes** for gene name standardization, **MAFFT** for alignment, **TrimAl** for quality control, and **IQ-TREE** for phylogeny reconstruction, utilizing asynchronous I/O and parallel processing for high performance.
+  dev_url: "https://github.com/luanrabelo/splace"
+  doc_url: "https://github.com/luanrabelo/splace#readme"
+
+extra:
+  recipe-maintainers:
+    - luanrabelo
