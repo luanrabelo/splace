@@ -40,3 +40,8 @@ SPLACE_v3.py
 beachmark.py
 *.sif
 datasets/
+*-cwd
+splace_app/
+.pytest_cache
+# Flutter
+.flutter-plugins

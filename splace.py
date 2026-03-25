@@ -80,6 +80,25 @@ genbank_group.add_argument(
     default="mt"
 )
 
+gene_filter_group = parser.add_argument_group(
+    title="Gene Filtering",
+    description="Filter sequences by specific gene names or GenBank feature types."
+)
+gene_filter_group.add_argument(
+    "--genes",
+    type=str,
+    default=None,
+    help="Comma-separated list of gene names (e.g., '12S,16S,COI') or path to a text file with one gene per line. "
+         "If not specified, uses the default gene list for the selected --gb-type."
+)
+gene_filter_group.add_argument(
+    "--feature-types",
+    type=str,
+    default=None,
+    help="Comma-separated list of GenBank feature types to extract (e.g., 'CDS,rRNA,tRNA'). "
+         "Only applies to GenBank files. Default: 'CDS'."
+)
+
 pipeline_group = parser.add_argument_group(
     title="Pipeline Options",
     description="Options for controlling the analysis pipeline."
@@ -103,6 +122,12 @@ pipeline_group.add_argument(
     "--benchmark",
     action="store_true",
     help="Enable benchmarking of execution time."
+)
+pipeline_group.add_argument(
+    "--allow-missing",
+    action="store_true",
+    help="Allow missing data in the supermatrix. Missing genes are filled with '?' characters. "
+         "Without this flag, genes absent from any taxon are removed from all."
 )
 
 if __name__ == "__main__":
@@ -143,6 +168,23 @@ if __name__ == "__main__":
         sys.exit(1)
 
     args = parser.parse_args()
+
+    # Parse gene filter: comma-separated string or text file
+    genes_filter = None
+    if args.genes:
+        if os.path.isfile(args.genes):
+            with open(args.genes, "r") as f:
+                genes_filter = [line.strip() for line in f if line.strip()]
+            logging.info(f"Loaded {len(genes_filter)} genes from file: {args.genes}")
+        else:
+            genes_filter = [g.strip() for g in args.genes.split(",") if g.strip()]
+            logging.info(f"Using gene filter: {genes_filter}")
+
+    # Parse feature types
+    feature_types = None
+    if args.feature_types:
+        feature_types = [ft.strip() for ft in args.feature_types.split(",") if ft.strip()]
+        logging.info(f"Using feature types: {feature_types}")
 
     # Initialize Benchmark
     from splace.utils import Benchmark
@@ -204,7 +246,9 @@ if __name__ == "__main__":
                         genbank_files=genbank_files,
                         output_dir=os.path.join(args.output_dir, "markers_fasta"),
                         data_type=args.gb_type,
-                        max_concurrent=args.threads
+                        max_concurrent=args.threads,
+                        genes_filter=genes_filter,
+                        feature_types=feature_types
                     )
                 )
                 benchmark.stop("GenBank Extraction")
@@ -219,7 +263,8 @@ if __name__ == "__main__":
                         fasta_files=fasta_files,
                         output_dir=os.path.join(args.output_dir, "markers_fasta"),
                         data_type=args.gb_type,
-                        max_concurrent=args.threads
+                        max_concurrent=args.threads,
+                        genes_filter=genes_filter
                     )
                 )
                 benchmark.stop("FASTA Extraction")
@@ -266,7 +311,8 @@ if __name__ == "__main__":
                         run_phylogeny_pipeline(
                             trimmed_files=trimmed_files,
                             output_dir=os.path.join(args.output_dir, "phylogeny"),
-                            threads=args.threads
+                            threads=args.threads,
+                            allow_missing=args.allow_missing
                         )
                         benchmark.stop("Phylogeny")
             

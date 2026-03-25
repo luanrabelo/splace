@@ -13,53 +13,48 @@ def check_iqtree():
     else:
         return None
 
-def prepare_supermatrix(trimmed_files, output_dir):
+def prepare_supermatrix(trimmed_files, output_dir, allow_missing=False):
     """
     Concatenate trimmed alignments into a supermatrix (NEXUS format) with partition block.
-    
+
     Args:
         trimmed_files (list): List of paths to trimmed FASTA files.
         output_dir (str): Directory to save the supermatrix.
-        
+        allow_missing (bool): If True, fill missing genes with '?' characters.
+            If False, remove genes that are not present in all taxa.
+
     Returns:
         str: Path to the generated supermatrix file.
     """
     logging.info("Preparing supermatrix...")
-    
+
     # Sort files to ensure deterministic order
     trimmed_files.sort()
-    
+
     all_taxa = set()
     gene_data = [] # List of tuples: (gene_name, length, sequence_dict)
-    
+
     # 1. Read all files
     for fasta_path in trimmed_files:
         gene_name = os.path.basename(fasta_path).replace("_aligned_trimmed.fasta", "").replace("_trimmed.fasta", "").replace(".fasta", "")
-        
+
         records = {}
         length = 0
         try:
             for record in SeqIO.parse(fasta_path, "fasta"):
-                # Use description as ID (BioPython parses >ID Description)
-                # Our headers are ">Species | Accession" which BioPython might split if spaces are present
-                # genbank_handler writes: f">{species} | {id}"
-                # If species has spaces, SeqIO.parse might treat record.id as the first word and description as the rest.
-                # It's safer to use record.description which usually contains the full header line minus the '>'
-                
-                # Check consistency of length
                 if length == 0:
                     length = len(record.seq)
                 elif len(record.seq) != length:
                     logging.warning(f"Sequence length mismatch in {gene_name}. Expected {length}, got {len(record.seq)} for {record.description}")
-                
+
                 records[record.description] = str(record.seq)
                 all_taxa.add(record.description)
-                
+
             if length > 0:
                 gene_data.append((gene_name, length, records))
             else:
                 logging.warning(f"Gene {gene_name} is empty or invalid. Skipping.")
-                
+
         except Exception as e:
             logging.error(f"Error reading {fasta_path}: {e}")
 
@@ -67,11 +62,39 @@ def prepare_supermatrix(trimmed_files, output_dir):
         logging.error("No valid data found to create supermatrix.")
         return None
 
-    # 2. Build Supermatrix
+    # 2. Filter genes based on allow_missing
+    if not allow_missing:
+        complete_genes = []
+        for gene_name, length, records in gene_data:
+            missing_taxa = all_taxa - set(records.keys())
+            if missing_taxa:
+                logging.info(f"Removing gene '{gene_name}': missing from {len(missing_taxa)} taxa ({', '.join(sorted(missing_taxa)[:3])}{'...' if len(missing_taxa) > 3 else ''})")
+            else:
+                complete_genes.append((gene_name, length, records))
+
+        if not complete_genes:
+            logging.error("No genes are present in all taxa. Use --allow-missing to include partial data.")
+            return None
+
+        removed_count = len(gene_data) - len(complete_genes)
+        if removed_count > 0:
+            logging.info(f"Kept {len(complete_genes)}/{len(gene_data)} genes (removed {removed_count} incomplete genes)")
+        gene_data = complete_genes
+
+    # 3. Build Supermatrix
     output_nexus = os.path.join(output_dir, "supermatrix.nex")
     total_chars = sum(g[1] for g in gene_data)
     num_taxa = len(all_taxa)
-    
+
+    # When genes were filtered, some taxa may no longer have any data
+    # Recompute actual taxa from remaining genes
+    if not allow_missing:
+        actual_taxa = set()
+        for _, _, records in gene_data:
+            actual_taxa.update(records.keys())
+        all_taxa = actual_taxa
+        num_taxa = len(all_taxa)
+
     try:
         with open(output_nexus, "w", encoding="utf-8") as out:
             out.write("#NEXUS\n")
@@ -79,27 +102,24 @@ def prepare_supermatrix(trimmed_files, output_dir):
             out.write(f"DIMENSIONS NTAX={num_taxa} NCHAR={total_chars};\n")
             out.write("FORMAT DATATYPE=DNA GAP=- MISSING=?;\n")
             out.write("MATRIX\n")
-            
-            # Sort taxa for clean output
+
             sorted_taxa = sorted(list(all_taxa))
-            
-            # Determine max name length for padding
             max_name_len = max(len(t) for t in sorted_taxa) + 2
-            
+
+            missing_char = "?" if allow_missing else "-"
+
             for taxon in sorted_taxa:
-                # Sanitize taxon name for NEXUS (replace spaces with underscores or wrap in quotes)
-                # For safety, we wrap in single quotes if it contains spaces or weird chars
                 safe_taxon_name = f"'{taxon}'"
                 out.write(f"{safe_taxon_name.ljust(max_name_len)} ")
-                
+
                 for _, length, records in gene_data:
-                    seq = records.get(taxon, "-" * length)
+                    seq = records.get(taxon, missing_char * length)
                     out.write(seq)
                 out.write("\n")
-            
+
             out.write(";\nEND;\n\n")
-            
-            # 3. Write Partition Block (Sets)
+
+            # 4. Write Partition Block (Sets)
             out.write("BEGIN SETS;\n")
             current_pos = 1
             for gene_name, length, _ in gene_data:
@@ -107,10 +127,10 @@ def prepare_supermatrix(trimmed_files, output_dir):
                 out.write(f"    CHARSET {gene_name} = {current_pos}-{end_pos};\n")
                 current_pos = end_pos + 1
             out.write("END;\n")
-            
-        logging.info(f"Supermatrix created at {output_nexus} (Taxa: {num_taxa}, Sites: {total_chars})")
+
+        logging.info(f"Supermatrix created at {output_nexus} (Taxa: {num_taxa}, Sites: {total_chars}, Genes: {len(gene_data)}, Missing data: {'allowed' if allow_missing else 'not allowed'})")
         return output_nexus
-        
+
     except Exception as e:
         logging.error(f"Failed to create supermatrix: {e}")
         return None
@@ -181,19 +201,19 @@ def run_iqtree_analysis(supermatrix_path, output_dir, threads=1):
         logging.error(f"Error executing IQ-TREE: {e}")
         return None
 
-def run_phylogeny_pipeline(trimmed_files, output_dir, threads=1):
+def run_phylogeny_pipeline(trimmed_files, output_dir, threads=1, allow_missing=False):
     """
     Orchestrate the phylogeny step: Supermatrix -> IQ-TREE
     """
     if not trimmed_files:
         logging.warning("No input files for phylogeny.")
         return None
-        
+
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True, mode=0o755)
-        
+
     # Step 1: Supermatrix
-    supermatrix = prepare_supermatrix(trimmed_files, output_dir)
+    supermatrix = prepare_supermatrix(trimmed_files, output_dir, allow_missing=allow_missing)
     if not supermatrix:
         return None
         

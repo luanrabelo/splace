@@ -13,13 +13,14 @@ GENE_NAME_CACHE = {}
 async def fasta_extractor(**kwargs):
     """
     ## Extract sequences from FASTA file based on gene/protein attributes
-    
+
     - Args:
         - `fasta_file` (**str**): Input FASTA file path
         - `output_path` (**str**): Output directory for extracted gene files
         - `data_type` (**str**): Type of sequences to extract ("mt" for mitochondrial, "cp" for chloroplast)
         - `executor` (**ThreadPoolExecutor**): Executor for blocking I/O
-    
+        - `genes_filter` (**List[str]**, optional): List of specific gene names to extract. Overrides default genes_list.
+
     - Returns:
         **List[str]**: List of paths to output files that were written to
     """
@@ -27,6 +28,7 @@ async def fasta_extractor(**kwargs):
     output_fasta_path = kwargs.get("output_path", None)
     data_type = kwargs.get("data_type", None)
     executor = kwargs.get("executor", None)
+    genes_filter = kwargs.get("genes_filter", None)
 
     if not input_fasta_file or not os.path.exists(input_fasta_file):
         logging.error(f"Input FASTA file ({input_fasta_file}) not found.")
@@ -37,12 +39,13 @@ async def fasta_extractor(**kwargs):
     
     os.makedirs(output_fasta_path, exist_ok=True)
 
-    def _process_fasta(input_file, output_path, dtype):
-        sequences_written = []
+    def _process_fasta(input_file, output_path, dtype, genes_filter):
         written_files = set()
-        
-        # Define gene lists (same as in genbank_handler)
-        if dtype == "mt":
+
+        # Determine gene name filter list
+        if genes_filter:
+            genes_list = genes_filter
+        elif dtype == "mt":
             genes_list = ["COI", "COII", "COIII", "CYTB", "ND1", "ND2", "ND3", "ND4", "ND4L", "ND5", "ND6", "ATP6", "ATP8"]
         elif dtype == "cp":
             genes_list = ["rbcL", "matK", "ndhF", "atpB", "psaA", "psbA", "psbB", "psbC", "psbD", "psbE", "psbF", "psbH", "psbI", "psbJ", "psbK", "psbL", "psbM", "psbN", "psbT"]
@@ -52,16 +55,19 @@ async def fasta_extractor(**kwargs):
         # Base name for the header
         file_base_name = os.path.splitext(os.path.basename(input_file))[0]
 
+        # Collect best (longest) sequence per gene per source to handle duplicates
+        best_per_gene = {}  # (gene_name, file_base_name) -> (seq_str, seq_len)
+
         try:
             for record in SeqIO.parse(input_file, "fasta"):
                 description = record.description
-                
+
                 # Extract [gene=...] or [protein=...]
                 gene_match = re.search(r'\[gene=([^\]]+)\]', description)
                 protein_match = re.search(r'\[protein=([^\]]+)\]', description)
-                
+
                 gene_name = None
-                
+
                 # 1. Try gene attribute
                 if gene_match:
                     raw_gene = gene_match.group(1)
@@ -100,7 +106,7 @@ async def fasta_extractor(**kwargs):
                                     if re.match(r'\d+:\d+', p):
                                         break
                                     valid_parts.append(p)
-                                
+
                                 if valid_parts:
                                     full_header_protein = " ".join(valid_parts)
                                     # Try normalizing the full description string
@@ -111,7 +117,7 @@ async def fasta_extractor(**kwargs):
                 # 3. If no gene name yet, try protein attribute
                 if not gene_name and protein_match:
                     raw_protein = protein_match.group(1)
-                    
+
                     if raw_protein in GENE_NAME_CACHE.values():
                         gene_name = next((k for k, v in GENE_NAME_CACHE.items() if v == raw_protein), None)
                     else:
@@ -120,25 +126,30 @@ async def fasta_extractor(**kwargs):
                             gene_name = normalized
                             if raw_protein not in GENE_NAME_CACHE.values():
                                 GENE_NAME_CACHE[gene_name] = raw_protein
-                
-                # 3. Final check against filter list
+
+                # 4. Final check against filter list and collect best sequence
                 if gene_name:
                     if genes_list and gene_name not in genes_list:
-                        # Skip if it is a gene but not one we want
                         continue
-                    
-                    # Write sequence
-                    output_file_path = os.path.join(output_path, f"{gene_name}.fasta")
-                    with open(output_file_path, "a+") as out_f:
-                        # Use file name as header ID + gene info for traceability if needed? 
-                        # User requested: "o cabeçãlho pode ser o nome do arquivo pra facilitar"
-                        out_f.write(f">{file_base_name}\n{str(record.seq)}\n")
-                    
-                    written_files.add(output_file_path)
-                    sequences_written.append(gene_name)
 
-            if sequences_written:
-                logging.info(f"Extracted {len(sequences_written)} sequences from {os.path.basename(input_file)}")
+                    seq_str = str(record.seq)
+                    seq_len = len(seq_str)
+                    key = (gene_name, file_base_name)
+
+                    if key not in best_per_gene or seq_len > best_per_gene[key][1]:
+                        if key in best_per_gene:
+                            logging.info(f"Duplicate gene '{gene_name}' in {file_base_name}: keeping longer ({seq_len}bp over {best_per_gene[key][1]}bp)")
+                        best_per_gene[key] = (seq_str, seq_len)
+
+            # Write best sequences to files
+            for (gene_name, header_id), (seq_str, _) in best_per_gene.items():
+                output_file_path = os.path.join(output_path, f"{gene_name}.fasta")
+                with open(output_file_path, "a+") as out_f:
+                    out_f.write(f">{header_id}\n{seq_str}\n")
+                written_files.add(output_file_path)
+
+            if best_per_gene:
+                logging.info(f"Extracted {len(best_per_gene)} sequences from {os.path.basename(input_file)}")
                 return list(written_files)
             else:
                 logging.warning(f"No matching genes found in {os.path.basename(input_file)}")
@@ -151,18 +162,26 @@ async def fasta_extractor(**kwargs):
     loop = asyncio.get_running_loop()
     if executor is None:
         with ThreadPoolExecutor() as local_executor:
-            return await loop.run_in_executor(local_executor, _process_fasta, input_fasta_file, output_fasta_path, data_type)
+            return await loop.run_in_executor(local_executor, _process_fasta, input_fasta_file, output_fasta_path, data_type, genes_filter)
     else:
-        return await loop.run_in_executor(executor, _process_fasta, input_fasta_file, output_fasta_path, data_type)
+        return await loop.run_in_executor(executor, _process_fasta, input_fasta_file, output_fasta_path, data_type, genes_filter)
 
 async def extract_multiple_fastas(**kwargs):
     """
     ## Process multiple FASTA files
+
+    - Args:
+        - `fasta_files` (**List[str]**): List of FASTA file paths
+        - `output_dir` (**str**): Output directory
+        - `data_type` (**str**): Type filter ("mt" or "cp")
+        - `max_concurrent` (**int**): Maximum concurrent extractions (default: 5)
+        - `genes_filter` (**List[str]**, optional): List of specific gene names to extract
     """
     list_files = kwargs.get("fasta_files", [])
     output_directory = kwargs.get("output_dir", "markers_fasta")
     data_type = kwargs.get("data_type", None)
     max_concurrent = kwargs.get("max_concurrent", 5)
+    genes_filter = kwargs.get("genes_filter", None)
 
     if not list_files:
         return []
@@ -179,7 +198,8 @@ async def extract_multiple_fastas(**kwargs):
                 fasta_file=f_file,
                 output_path=output_directory,
                 data_type=data_type,
-                executor=executor
+                executor=executor,
+                genes_filter=genes_filter
             )
 
     tasks = [extract_single_file(f) for f in list_files]

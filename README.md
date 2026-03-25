@@ -6,6 +6,14 @@
     <h1 align="center">SPLACE (<b>SP</b>Lit, <b>A</b>lign and <b>C</b>oncatenat<b>E</b>)</h1>
 </p>
 
+### Platform Compatibility
+
+| Operating System | Status |
+|:---|:---|
+| Ubuntu | ![Tests (Ubuntu)](https://github.com/luanrabelo/splace/actions/workflows/test-ubuntu.yml/badge.svg?branch=main) |
+| macOS | ![Tests (macOS)](https://github.com/luanrabelo/splace/actions/workflows/test-macos.yml/badge.svg?branch=main) |
+| Windows | ![Tests (Windows)](https://github.com/luanrabelo/splace/actions/workflows/test-windows.yml/badge.svg?branch=main) |
+
 # Contents Overview
 - [System Overview](#system-overview)
 - [Licence](#licence)
@@ -107,9 +115,12 @@ The basic syntax is `python splace.py [input_dir] [output_dir] [options]`.
 | `input_dir` | Input | Path to directory containing **GenBank** or **Fasta** files. |
 | `output_dir` | Output | Directory where results will be saved. |
 | `--gb-type` | Extraction | Type of Genbank data: `mt` (mitochondrial) or `cp` (chloroplast). Default: `mt`. |
+| `--genes` | Filtering | Comma-separated gene names (e.g., `12S,16S,COI`) or path to a text file (one gene per line). Default: built-in list per `--gb-type`. |
+| `--feature-types` | Filtering | Comma-separated GenBank feature types to extract (e.g., `CDS,rRNA,tRNA`). Default: `CDS`. |
 | `--align` | Alignment | Enable multiple sequence alignment using **MAFFT**. |
 | `--trimal` | Trimming | Enable trimming using **TrimAl**. |
 | `--iqtree` | Phylogeny | Enable phylogenetic inference using **IQ-TREE**. |
+| `--allow-missing` | Phylogeny | Allow missing data in the supermatrix (fills with `?`). Without this flag, genes absent from any taxon are removed. |
 | `--benchmark` | Performance | Enable execution time benchmarking. |
 | `-t`, `--threads` | Performance | Number of threads for parallel processing. Default: 4. |
 
@@ -175,5 +186,5 @@ https://doi.org/10.3389/fbinf.2022.1074802
 ***  
 ## Contact
 ##### [:rocket: Go to Contents Overview](#contents-overview)
-For reporting bugs or feedback, please reach out to **Luan Rabelo**: `luanrabelo@outlook.com`
+For reporting bugs or feedback, please reach out to **Luan Rabelo**: `luan.rabelo@pq.itv.org`
 ***  

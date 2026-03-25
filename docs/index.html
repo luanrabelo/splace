@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPLACE - SPlit, Align and ConcatenatE</title>
+    <!-- Open Graph / Social Media Meta Tags -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="SPLACE - SPlit, Align and ConcatenatE">
+    <meta property="og:description" content="A comprehensive toolkit for phylogenomic analysis. Extract genes from GenBank files, align sequences, and build phylogenetic trees.">
+    <meta property="og:image" content="https://raw.githubusercontent.com/luanrabelo/splace/main/docs/assets/SPLACE.png">
+    <meta property="og:url" content="https://luanrabelo.github.io/splace/">
+    <meta property="og:site_name" content="SPLACE">
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="SPLACE - SPlit, Align and ConcatenatE">
+    <meta name="twitter:description" content="A comprehensive toolkit for phylogenomic analysis. Extract genes from GenBank files, align sequences, and build phylogenetic trees.">
+    <meta name="twitter:image" content="https://raw.githubusercontent.com/luanrabelo/splace/main/docs/assets/SPLACE.png">
+    <!-- General Meta -->
+    <meta name="description" content="SPLACE - A comprehensive toolkit for phylogenomic analysis. Extract genes from GenBank files, align sequences, and build phylogenetic trees.">
+    <meta name="author" content="Luan Rabelo and Renato Moreira-Oliveira">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Montserrat', 'sans-serif'],
+                        heading: ['Alice', 'serif'],
+                    },
+                    colors: {
+                        'splace-red': {
+                            50: '#fef2f2',
+                            100: '#fde3e3',
+                            200: '#f9b3b3',
+                            300: '#f47a7a',
+                            400: '#d4213f',
+                            500: '#bf0030',
+                            600: '#a50026',
+                            700: '#8a001f',
+                            800: '#6e0019',
+                            900: '#520012',
+                        },
+                        'splace-blue': {
+                            50: '#eef0fb',
+                            100: '#d5d9f3',
+                            200: '#a8afe5',
+                            300: '#7b85d7',
+                            400: '#4e5bc9',
+                            500: '#3a47ab',
+                            600: '#323795',
+                            700: '#2a2e7d',
+                            800: '#212465',
+                            900: '#191b4d',
+                        },
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome -->
+    <script src="https://kit.fontawesome.com/7d94912b47.js" crossorigin="anonymous"></script>
+    <!-- Tippy.js -->
+    <script src="https://unpkg.com/@popperjs/core@2"></script>
+    <script src="https://unpkg.com/tippy.js@6"></script>
+    <!-- JSZip + FileSaver -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Alice&family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Montserrat', sans-serif; }
+
+        /* Toggle Switch - Standard */
+        .switch-track {
+            display: inline-flex;
+            align-items: center;
+            width: 36px;
+            height: 20px;
+            border-radius: 10px;
+            background: #d1d5db;
+            cursor: pointer;
+            transition: background 0.2s;
+            padding: 2px;
+            flex-shrink: 0;
+        }
+        .switch-track.active {
+            background: #323795;
+        }
+        .switch-knob {
+            display: block;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+            transition: transform 0.2s;
+        }
+        .switch-track.active .switch-knob {
+            transform: translateX(16px);
+        }
+
+        /* Toggle Switch - Small (for gene chips) */
+        .switch-track-sm {
+            display: inline-flex;
+            align-items: center;
+            width: 28px;
+            height: 16px;
+            border-radius: 8px;
+            background: #d1d5db;
+            cursor: pointer;
+            transition: background 0.2s;
+            padding: 2px;
+            flex-shrink: 0;
+        }
+        .switch-track-sm.active {
+            background: #323795;
+        }
+        .switch-knob-sm {
+            display: block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: white;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+            transition: transform 0.2s;
+        }
+        .switch-track-sm.active .switch-knob-sm {
+            transform: translateX(12px);
+        }
+
+        /* Gene Chips */
+        .gene-chip {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+            background: white;
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: all 0.15s;
+            user-select: none;
+            min-width: 0;
+        }
+        .gene-chip:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        }
+        .gene-chip.active {
+            background: #eef0fb;
+            border-color: #a8afe5;
+            color: #323795;
+        }
+        .gene-name { font-weight: 500; }
+        .gene-count { font-size: 0.75rem; opacity: 0.6; }
+        .gene-len { font-size: 0.7rem; opacity: 0.5; font-style: italic; }
+
+        /* Drop zone */
+        .drop-active { border-color: #323795 !important; background: #eef0fb !important; }
+
+        /* Tippy theme */
+        .tippy-box[data-theme~='splace'] {
+            background: #323795;
+            color: #eef0fb;
+            font-size: 0.75rem;
+            border-radius: 8px;
+            line-height: 1.4;
+        }
+        .tippy-box[data-theme~='splace'] .tippy-arrow {
+            color: #323795;
+        }
+        .tippy-box[data-theme~='splace'] strong {
+            color: #f9b3b3;
+        }
+
+        /* Records Table */
+        .records-table tbody tr {
+            border-bottom: 1px solid #f3f4f6;
+            transition: background 0.1s;
+        }
+        .records-table tbody tr:hover {
+            background: #f9fafb;
+        }
+        .records-table tbody tr:last-child {
+            border-bottom: none;
+        }
+
+        /* Header Builder Chips */
+        .header-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 5px 12px;
+            border-radius: 999px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s;
+            user-select: none;
+        }
+        .header-chip.available {
+            background: #f3f4f6;
+            color: #4b5563;
+            border: 1px solid #e5e7eb;
+        }
+        .header-chip.available:hover {
+            background: #eef0fb;
+            border-color: #a8afe5;
+            color: #323795;
+        }
+        .header-chip.selected {
+            background: #323795;
+            color: white;
+            border: 1px solid #323795;
+        }
+        .header-chip.selected:hover {
+            background: #2a2e7d;
+        }
+        .header-chip.dragging {
+            opacity: 0.5;
+        }
+
+        /* Column Eye Toggles */
+        .col-eye-toggle {
+            cursor: pointer;
+            border: none;
+            background: none;
+            padding: 0;
+            font-size: inherit;
+        }
+    </style>
+</head>
+<body class="bg-white min-h-screen">
+
+<!-- Header -->
+<header class="bg-white border-b border-gray-200 shadow-sm">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-4">
+            <img src="assets/SPLACE.png" alt="SPLACE Logo" style="width: 80px; height: auto; object-fit: contain;">
+            <div class="flex flex-col justify-center">
+                <h1 class="text-3xl  font-bold text-gray-800">SPLACE</h1>
+                <p class="text-xl text-gray-900"><b>SP</b>lit, <b>A</b>lign and <b>C</b>oncatenat<b>E</b></p>
+            </div>
+        </div>
+        <a href="https://github.com/luanrabelo/splace" target="_blank" class="text-gray-400 hover:text-splace-blue-600 transition-colors">
+            <i class="fa-brands fa-github text-4xl"></i>
+        </a>
+    </div>
+</header>
+
+<main class="max-w-6xl mx-auto px-4 py-6 space-y-6">
+
+    <!-- Accession Input (FIRST element) -->
+    <section class="bg-white rounded-xl border border-gray-200 p-5">
+        <label class="block text-sm font-semibold text-gray-700 mb-2">
+            <i class="fa-solid fa-dna text-splace-blue-600 mr-1"></i>
+            Accession Numbers
+            <span class="ml-1 text-gray-400 cursor-help" data-tippy-content="Enter NCBI accession numbers separated by commas, spaces, or newlines. E.g.: NC_061537, NC_023122">
+                <i class="fa-solid fa-circle-info text-sm"></i>
+            </span>
+        </label>
+        <div class="flex gap-2">
+            <textarea id="accessionInput" rows="2" class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-splace-blue-400 focus:border-splace-blue-500 resize-none font-sans" placeholder="NC_061537, NC_023122, DQ080041..."></textarea>
+            <div class="flex flex-col gap-2">
+                <button id="fetchBtn" class="flex-1 bg-splace-blue-600 hover:bg-splace-blue-700 text-white px-5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap">
+                    <i class="fa-solid fa-magnifying-glass mr-1"></i> Fetch
+                </button>
+                <button id="exampleBtn" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600 px-5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap">
+                    <i class="fa-solid fa-flask mr-1"></i> Example
+                </button>
+            </div>
+        </div>
+        <div id="fetchStatus" class="text-sm mt-2 text-gray-500 hidden"></div>
+    </section>
+
+    <!-- Drop Zone -->
+    <section>
+        <div id="dropZone" class="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center cursor-pointer hover:border-splace-blue-400 hover:bg-splace-blue-50/50 transition-colors">
+            <input type="file" id="fileInput" class="hidden" multiple accept=".gb,.gbk,.genbank">
+            <i class="fa-solid fa-cloud-arrow-up text-4xl text-gray-400 mb-3"></i>
+            <p class="text-gray-600 font-medium">Drag & drop GenBank files or folders here</p>
+            <p class="text-gray-400 text-sm mt-1">or click to browse (.gb, .gbk, .genbank)</p>
+        </div>
+    </section>
+
+    <!-- Loaded Records -->
+    <section id="recordsSection" class="bg-white rounded-xl border border-gray-200 p-5 hidden">
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="text-sm font-semibold text-gray-700">
+                <i class="fa-solid fa-list-check text-splace-blue-600 mr-1"></i>
+                Loaded Records <span id="recordCount" class="text-gray-400">(0)</span>
+            </h2>
+            <div class="flex gap-2 items-center">
+                <button id="fetchTaxonomyBtn" class="text-xs bg-splace-blue-100 hover:bg-splace-blue-200 text-splace-blue-700 px-2.5 py-1 rounded-md font-medium transition-colors" data-tippy-content="Fetch taxonomy ranks (Kingdom, Phylum, Class, Order, Family) from GBIF for all records using dataFishing (Rabelo et al. 2025)">
+                    <i class="fa-solid fa-globe mr-1"></i> Fetch Taxonomy
+                </button>
+                <button id="clearRecords" class="text-xs text-red-500 hover:text-red-700 font-medium transition-colors">
+                    <i class="fa-solid fa-trash mr-1"></i> Clear all
+                </button>
+            </div>
+        </div>
+        <!-- Column Visibility Toggles -->
+        <div id="columnTogglesRow" class="flex flex-wrap gap-x-3 gap-y-1 mb-3 text-xs text-gray-500">
+            <span class="text-gray-400 font-medium mr-1"><i class="fa-solid fa-table-columns mr-1"></i>Columns:</span>
+            <button class="col-eye-toggle hover:text-splace-blue-600 transition-colors" data-col-toggle="accession"><i class="fa-solid fa-eye-slash"></i> Accession</button>
+            <button class="col-eye-toggle hover:text-splace-blue-600 transition-colors" data-col-toggle="kingdom"><i class="fa-solid fa-eye-slash"></i> Kingdom</button>
+            <button class="col-eye-toggle hover:text-splace-blue-600 transition-colors" data-col-toggle="phylum"><i class="fa-solid fa-eye-slash"></i> Phylum</button>
+            <button class="col-eye-toggle hover:text-splace-blue-600 transition-colors" data-col-toggle="class"><i class="fa-solid fa-eye"></i> Class</button>
+            <button class="col-eye-toggle hover:text-splace-blue-600 transition-colors" data-col-toggle="order"><i class="fa-solid fa-eye"></i> Order</button>
+            <button class="col-eye-toggle hover:text-splace-blue-600 transition-colors" data-col-toggle="family"><i class="fa-solid fa-eye"></i> Family</button>
+            <button class="col-eye-toggle hover:text-splace-blue-600 transition-colors" data-col-toggle="genus"><i class="fa-solid fa-eye"></i> Genus</button>
+            <button class="col-eye-toggle hover:text-splace-blue-600 transition-colors" data-col-toggle="species"><i class="fa-solid fa-eye"></i> Species</button>
+            <button class="col-eye-toggle hover:text-splace-blue-600 transition-colors" data-col-toggle="pcgs"><i class="fa-solid fa-eye"></i> PCGs</button>
+            <button class="col-eye-toggle hover:text-splace-blue-600 transition-colors" data-col-toggle="rrnas"><i class="fa-solid fa-eye"></i> rRNAs</button>
+            <button class="col-eye-toggle hover:text-splace-blue-600 transition-colors" data-col-toggle="trnas"><i class="fa-solid fa-eye"></i> tRNAs</button>
+            <button class="col-eye-toggle hover:text-splace-blue-600 transition-colors" data-col-toggle="source"><i class="fa-solid fa-eye-slash"></i> Source</button>
+        </div>
+        <div id="recordsList" class="overflow-x-auto max-h-64 overflow-y-auto">
+            <table class="records-table w-full text-sm">
+                <thead class="sticky top-0 bg-white z-10">
+                    <tr class="text-left text-xs text-gray-500 tracking-wider border-b border-gray-200">
+                        <th class="px-3 py-2" data-col="accession">Accession</th>
+                        <th class="px-3 py-2" data-col="kingdom">Kingdom</th>
+                        <th class="px-3 py-2" data-col="phylum">Phylum</th>
+                        <th class="px-3 py-2" data-col="class">Class</th>
+                        <th class="px-3 py-2" data-col="order">Order</th>
+                        <th class="px-3 py-2" data-col="family">Family</th>
+                        <th class="px-3 py-2" data-col="genus">Genus</th>
+                        <th class="px-3 py-2" data-col="species">Species</th>
+                        <th class="px-3 py-2 text-center" data-col="pcgs">PCGs</th>
+                        <th class="px-3 py-2 text-center" data-col="rrnas">rRNAs</th>
+                        <th class="px-3 py-2 text-center" data-col="trnas">tRNAs</th>
+                        <th class="px-3 py-2 text-center" data-col="source">Source</th>
+                        <th class="px-3 py-2"></th>
+                    </tr>
+                </thead>
+                <tbody id="recordsTableBody"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- Feature Types (separate section) -->
+    <section id="featureTypesSection" class="bg-white rounded-xl border border-gray-200 p-5 hidden">
+        <h3 class="text-sm font-semibold text-gray-700 mb-3">
+            <i class="fa-solid fa-layer-group text-splace-blue-600 mr-1"></i>
+            Feature Types
+        </h3>
+        <div id="featureTypesList" class="flex flex-wrap gap-4"></div>
+    </section>
+
+    <!-- Available Genes (separate section) -->
+    <section id="genesSection" class="bg-white rounded-xl border border-gray-200 p-5 hidden">
+        <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-semibold text-gray-700">
+                <i class="fa-solid fa-barcode text-splace-blue-600 mr-1"></i>
+                Available Genes
+            </h3>
+            <div class="flex gap-2">
+                <button id="selectAllGenes" class="text-xs bg-gray-100 hover:bg-gray-200 px-2.5 py-1 rounded-md font-medium text-gray-600 transition-colors">Select All</button>
+                <button id="selectNoneGenes" class="text-xs bg-gray-100 hover:bg-gray-200 px-2.5 py-1 rounded-md font-medium text-gray-600 transition-colors">None</button>
+                <button id="selectDefaultGenes" class="text-xs bg-splace-blue-100 hover:bg-splace-blue-200 px-2.5 py-1 rounded-md font-medium text-splace-blue-700 transition-colors" data-tippy-content="Select the default gene set for phylogenetic analysis">Default</button>
+            </div>
+        </div>
+        <div id="genesList" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2"></div>
+    </section>
+
+    <!-- Download Actions -->
+    <section id="downloadSection" class="hidden">
+        <button id="downloadBtn" class="w-full bg-splace-blue-600 hover:bg-splace-blue-700 text-white px-6 py-3 rounded-xl font-medium transition-colors text-center">
+            <i class="fa-solid fa-download mr-2"></i> Download FASTA Files
+        </button>
+    </section>
+
+    <!-- Status Log -->
+    <section id="logSection" class="hidden">
+        <details class="bg-gray-800 rounded-xl overflow-hidden">
+            <summary class="px-4 py-2 text-sm text-gray-300 cursor-pointer hover:bg-gray-700">
+                <i class="fa-solid fa-terminal mr-1"></i> Processing Log
+            </summary>
+            <pre id="logOutput" class="px-4 py-3 text-xs text-green-400 max-h-48 overflow-y-auto font-mono"></pre>
+        </details>
+    </section>
+
+</main>
+
+<!-- Clear All Confirmation Modal -->
+<div id="clearModal" class="fixed inset-0 z-50 hidden">
+    <div class="fixed inset-0 bg-black/40 backdrop-blur-sm" id="clearModalOverlay"></div>
+    <div class="fixed inset-0 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 relative">
+            <div class="text-center mb-4">
+                <div class="mx-auto w-12 h-12 rounded-full bg-splace-red-50 flex items-center justify-center mb-3">
+                    <i class="fa-solid fa-triangle-exclamation text-splace-red-600 text-xl"></i>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800">Clear all records?</h3>
+                <p class="text-sm text-gray-500 mt-1">This action cannot be undone. All loaded records and selections will be removed.</p>
+            </div>
+            <div class="flex gap-3">
+                <button id="clearModalCancel" class="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors">Cancel</button>
+                <button id="clearModalConfirm" class="flex-1 px-4 py-2.5 rounded-xl bg-splace-red-600 hover:bg-splace-red-700 text-white text-sm font-medium transition-colors">Clear all</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Remove Record Confirmation Modal -->
+<div id="removeModal" class="fixed inset-0 z-50 hidden">
+    <div class="fixed inset-0 bg-black/40 backdrop-blur-sm" id="removeModalOverlay"></div>
+    <div class="fixed inset-0 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 relative">
+            <div class="text-center mb-4">
+                <div class="mx-auto w-12 h-12 rounded-full bg-splace-red-50 flex items-center justify-center mb-3">
+                    <i class="fa-solid fa-triangle-exclamation text-splace-red-600 text-xl"></i>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800">Remove record?</h3>
+                <p id="removeModalText" class="text-sm text-gray-500 mt-1">This action cannot be undone.</p>
+            </div>
+            <div class="flex gap-3">
+                <button id="removeModalCancel" class="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors">Cancel</button>
+                <button id="removeModalConfirm" class="flex-1 px-4 py-2.5 rounded-xl bg-splace-red-600 hover:bg-splace-red-700 text-white text-sm font-medium transition-colors">Remove</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Record Modal -->
+<div id="editModal" class="fixed inset-0 z-50 hidden">
+    <div class="fixed inset-0 bg-black/40 backdrop-blur-sm" id="editModalOverlay"></div>
+    <div class="fixed inset-0 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 relative max-h-[90vh] overflow-y-auto">
+            <div class="mb-4">
+                <h3 class="text-lg font-semibold text-gray-800">
+                    <i class="fa-solid fa-pen-to-square text-splace-blue-600 mr-2"></i>Edit Record
+                </h3>
+            </div>
+
+            <!-- Record Info (read-only) -->
+            <div class="bg-gray-50 rounded-lg p-3 mb-4 text-sm text-gray-600">
+                <div id="editModalInfo"></div>
+            </div>
+
+            <!-- Editable Fields -->
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Species</label>
+                    <input type="text" id="editSpeciesInput" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-splace-blue-400 focus:border-splace-blue-500 outline-none italic" placeholder="e.g., Rhinella marina">
+                    <p id="editSpeciesError" class="text-xs text-red-500 mt-1 hidden"></p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Genus <span class="text-gray-400 font-normal">(auto)</span></label>
+                    <input type="text" id="editGenusDisplay" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-500 outline-none italic" readonly>
+                </div>
+
+                <!-- GBIF Fetch Button -->
+                <div>
+                    <button id="editGbifBtn" class="w-full bg-splace-blue-50 hover:bg-splace-blue-100 text-splace-blue-700 border border-splace-blue-200 px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50" disabled data-tippy-content="Auto-fill taxonomy ranks from GBIF using dataFishing (Rabelo et al. 2025)">
+                        <i class="fa-solid fa-globe mr-1"></i> Fetch Taxonomy from GBIF
+                    </button>
+                    <p id="editGbifStatus" class="text-xs text-gray-500 mt-1 hidden"></p>
+                </div>
+
+                <!-- Taxonomy Ranks (2-column grid) -->
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 mb-1">Kingdom</label>
+                        <input type="text" id="editKingdomInput" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-splace-blue-400 focus:border-splace-blue-500 outline-none" placeholder="e.g., Animalia">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 mb-1">Phylum</label>
+                        <input type="text" id="editPhylumInput" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-splace-blue-400 focus:border-splace-blue-500 outline-none" placeholder="e.g., Chordata">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 mb-1">Class</label>
+                        <input type="text" id="editClassInput" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-splace-blue-400 focus:border-splace-blue-500 outline-none" placeholder="e.g., Amphibia">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 mb-1">Order</label>
+                        <input type="text" id="editOrderInput" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-splace-blue-400 focus:border-splace-blue-500 outline-none" placeholder="e.g., Anura">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1">Family</label>
+                    <input type="text" id="editFamilyInput" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-splace-blue-400 focus:border-splace-blue-500 outline-none" placeholder="e.g., Bufonidae">
+                    <p id="editFamilyError" class="text-xs text-red-500 mt-1 hidden"></p>
+                </div>
+            </div>
+
+            <div class="flex gap-3 mt-6">
+                <button id="editModalCancel" class="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors">Cancel</button>
+                <button id="editModalSave" class="flex-1 px-4 py-2.5 rounded-xl bg-splace-blue-600 hover:bg-splace-blue-700 text-white text-sm font-medium transition-colors">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Progress Modal -->
+<div id="progressModal" class="fixed inset-0 z-50 hidden">
+    <div class="fixed inset-0 bg-black/40 backdrop-blur-sm"></div>
+    <div class="fixed inset-0 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+            <div class="text-center mb-4">
+                <div class="mx-auto w-12 h-12 rounded-full bg-splace-blue-50 flex items-center justify-center mb-3">
+                    <i id="progressIcon" class="fa-solid fa-spinner fa-spin text-splace-blue-600 text-xl"></i>
+                </div>
+                <h3 id="progressTitle" class="text-lg font-semibold text-gray-800">Loading...</h3>
+                <p id="progressSubtitle" class="text-sm text-gray-500 mt-1"></p>
+            </div>
+            <div class="w-full bg-gray-200 rounded-full h-3 mb-2">
+                <div id="progressBar" class="bg-splace-blue-600 h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+            <p id="progressDetail" class="text-xs text-gray-400 text-center"></p>
+        </div>
+    </div>
+</div>
+
+<!-- Header Builder Modal -->
+<div id="headerModal" class="fixed inset-0 z-50 hidden">
+    <div class="fixed inset-0 bg-black/40 backdrop-blur-sm" id="headerModalOverlay"></div>
+    <div class="fixed inset-0 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-xl w-full p-6 relative max-h-[90vh] overflow-y-auto">
+            <div class="mb-4">
+                <h3 class="text-lg font-semibold text-gray-800">
+                    <i class="fa-solid fa-pen-ruler text-splace-blue-600 mr-2"></i>FASTA Header Builder
+                </h3>
+                <p class="text-sm text-gray-500 mt-1">Compose the header for your FASTA sequences by selecting and ordering the fields below.</p>
+            </div>
+
+            <!-- Available Fields -->
+            <div class="mb-4">
+                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Available Fields</label>
+                <div id="headerAvailableFields" class="flex flex-wrap gap-2 min-h-[36px]"></div>
+            </div>
+
+            <!-- Selected Fields (Header Composition) -->
+            <div class="mb-4">
+                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Header Composition <span class="font-normal normal-case">(drag to reorder)</span></label>
+                <div id="headerSelectedFields" class="flex flex-wrap gap-2 min-h-[36px] border-2 border-dashed border-gray-200 rounded-lg p-2"></div>
+            </div>
+
+            <!-- Separator -->
+            <div class="mb-4">
+                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Separator</label>
+                <div class="flex gap-2">
+                    <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                        <input type="radio" name="headerSeparator" value="_" checked class="text-splace-blue-600 focus:ring-splace-blue-400">
+                        <span class="text-sm text-gray-700">Underscore (_)</span>
+                    </label>
+                    <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                        <input type="radio" name="headerSeparator" value="|" class="text-splace-blue-600 focus:ring-splace-blue-400">
+                        <span class="text-sm text-gray-700">Pipe (|)</span>
+                    </label>
+                    <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                        <input type="radio" name="headerSeparator" value="-" class="text-splace-blue-600 focus:ring-splace-blue-400">
+                        <span class="text-sm text-gray-700">Dash (-)</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Live Preview -->
+            <div class="mb-4">
+                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Preview</label>
+                <div id="headerPreview" class="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 font-mono text-xs text-gray-700 break-all min-h-[32px]">
+                    &gt;Species_Accession
+                </div>
+            </div>
+
+            <!-- Duplicate Warning -->
+            <div id="headerDuplicateWarning" class="mb-4 hidden">
+                <div class="bg-splace-red-50 border border-splace-red-200 rounded-lg px-3 py-2 flex items-start gap-2">
+                    <i class="fa-solid fa-triangle-exclamation text-splace-red-600 mt-0.5"></i>
+                    <div>
+                        <p class="text-sm font-medium text-splace-red-700">Duplicate headers detected</p>
+                        <p id="headerDuplicateText" class="text-xs text-splace-red-600 mt-0.5"></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Instructions -->
+            <details class="mb-5">
+                <summary class="text-xs font-medium text-splace-blue-600 cursor-pointer hover:text-splace-blue-700">
+                    <i class="fa-solid fa-circle-info mr-1"></i> Instructions
+                </summary>
+                <div class="mt-2 text-xs text-gray-500 space-y-1.5 pl-4">
+                    <p><strong>1.</strong> Click on available fields to add them to the header composition.</p>
+                    <p><strong>2.</strong> Click on selected fields (blue) to remove them from the header.</p>
+                    <p><strong>3.</strong> Drag selected fields to reorder them.</p>
+                    <p><strong>4.</strong> Choose a separator character between fields.</p>
+                    <p><strong>5.</strong> The preview shows how the first record's header will appear.</p>
+                    <p><strong>6.</strong> If your field combination produces duplicate headers across records, a warning will appear and the download button will be disabled.</p>
+                    <p><strong>7.</strong> To ensure unique headers, include <em>Accession</em> (always unique) or combine enough fields to differentiate all records.</p>
+                </div>
+            </details>
+
+            <!-- Download Format -->
+            <div class="mb-5">
+                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Download Format</label>
+                <div class="flex gap-3">
+                    <label class="flex-1 inline-flex items-center gap-2 cursor-pointer border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50 transition-colors has-[:checked]:border-splace-blue-400 has-[:checked]:bg-splace-blue-50">
+                        <input type="radio" name="downloadFormat" value="zip" checked class="text-splace-blue-600 focus:ring-splace-blue-400">
+                        <span class="text-sm text-gray-700"><i class="fa-solid fa-file-zipper mr-1 text-gray-400"></i> ZIP Archive</span>
+                    </label>
+                    <label class="flex-1 inline-flex items-center gap-2 cursor-pointer border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50 transition-colors has-[:checked]:border-splace-blue-400 has-[:checked]:bg-splace-blue-50">
+                        <input type="radio" name="downloadFormat" value="individual" class="text-splace-blue-600 focus:ring-splace-blue-400">
+                        <span class="text-sm text-gray-700"><i class="fa-solid fa-copy mr-1 text-gray-400"></i> Individual Files</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="flex gap-3">
+                <button id="headerModalCancel" class="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors">Cancel</button>
+                <button id="headerModalConfirm" class="flex-1 px-4 py-2.5 rounded-xl bg-splace-blue-600 hover:bg-splace-blue-700 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                    <i class="fa-solid fa-download mr-1"></i> Download
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<footer class="text-center py-4 text-xs text-gray-600 font-sans">
+    SPLACE v4.0.0 | GPL-3.0 | Luan Rabelo and Renato Moreira-Oliveira
+</footer>
+
+<script src="splace.js"></script>
+
+</body>
+</html>

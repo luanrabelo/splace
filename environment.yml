@@ -5,6 +5,7 @@ channels:
   - lprabelo
 dependencies:
   - python=3.12
+  - pytest=7.4.4
   - biopython=1.85
   - iqtree=3.0.1
   - syngenes=1.0.6
