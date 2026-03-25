@@ -206,7 +206,14 @@ function standardizeTrnaName(feat) {
     const anticodon = feat.qualifiers.anticodon || "";
     const raw = product || gene;
 
-    if (!raw) return null;
+    if (!raw) {
+        // Try to infer from note or anticodon
+        if (note) {
+            const noteAa = note.match(/tRNA-(\w+)/i) || note.match(/transfer\s+RNA[- ]+(\w+)/i);
+            if (noteAa) return `tRNA-${noteAa[1].charAt(0).toUpperCase()}${noteAa[1].slice(1).toLowerCase()}`;
+        }
+        return "tRNA-Unknown";
+    }
 
     const rawLower = raw.toLowerCase();
     const geneLower = gene.toLowerCase();
@@ -260,6 +267,23 @@ function standardizeTrnaName(feat) {
         return `tRNA-${aaMatch[1].charAt(0).toUpperCase()}${aaMatch[1].slice(1).toLowerCase()}`;
     }
 
+    // Handle gene-qualifier format: trnX → tRNA-Xxx
+    const trnMatch = raw.match(/^trn([A-Za-z])$/i);
+    if (trnMatch) {
+        const letter = trnMatch[1].toUpperCase();
+        const aaNames = { A:"Ala", R:"Arg", N:"Asn", D:"Asp", C:"Cys", E:"Glu", Q:"Gln",
+            G:"Gly", H:"His", I:"Ile", L:"Leu", K:"Lys", M:"Met", F:"Phe", P:"Pro",
+            S:"Ser", T:"Thr", W:"Trp", Y:"Tyr", V:"Val" };
+        if (aaNames[letter]) return `tRNA-${aaNames[letter]}`;
+        return `tRNA-${letter}`;
+    }
+
+    // Handle "transfer RNA-Xxx" format
+    const transferMatch = raw.match(/transfer\s+RNA[- ]+(\w+)/i);
+    if (transferMatch) {
+        return `tRNA-${transferMatch[1].charAt(0).toUpperCase()}${transferMatch[1].slice(1).toLowerCase()}`;
+    }
+
     return raw;
 }
 
@@ -304,7 +328,10 @@ function detectDataType() {
 // GenBank Parser
 // ========================================================================
 function parseGenBank(text) {
-    const result = { accession: "", organism: "", taxonomy: "", features: [], sequence: "", taxonomyRanks: { kingdom: "", phylum: "", class: "", order: "", family: "" } };
+    // Normalize line endings (Windows \r\n → \n) to avoid regex $ failures
+    text = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+    const result = { accession: "", organism: "", taxonomy: "", features: [], sequence: "", taxonomyRanks: { kingdom: "", phylum: "", class: "", order: "", family: "", authorship: "" } };
 
     const locusMatch = text.match(/^LOCUS\s+(\S+)/m);
     if (locusMatch) result.accession = locusMatch[1];
@@ -383,7 +410,7 @@ function extractTaxonomy(record) {
         }
     }
 
-    return { kingdom, phylum, class: klass, order, family, genus, species };
+    return { kingdom, phylum, class: klass, order, family, genus, species, authorship: ranks.authorship || "" };
 }
 
 function countFeatureTypes(record) {
@@ -495,12 +522,10 @@ const FETCH_DELAY = 350;
 async function fetchAccession(accession) {
     const cached = await cacheGet(accession);
     if (cached) {
-        log(`Cache hit: ${accession}`);
         return cached;
     }
 
     const url = `${NCBI_BASE}?db=nucleotide&id=${encodeURIComponent(accession)}&rettype=gb&retmode=text`;
-    log(`Fetching ${accession} from NCBI...`);
 
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`NCBI returned ${resp.status} for ${accession}`);
@@ -532,7 +557,7 @@ async function fetchMultiple(accessions) {
             results.push(record);
             await new Promise(r => setTimeout(r, FETCH_DELAY));
         } catch (e) {
-            log(`Error fetching ${acc}: ${e.message}`);
+            // Error fetching record, skipped
         }
     }
     statusEl.textContent = `Fetched ${results.length}/${accessions.length} records`;
@@ -595,8 +620,8 @@ async function cachePut(accession, data, rawText) {
             rawText,
             timestamp: Date.now(),
         });
-    } catch (e) {
-        log(`Cache write error: ${e.message}`);
+    } catch {
+        // Cache write error, ignored
     }
 }
 
@@ -633,6 +658,7 @@ function renderRecords() {
         const sourceClass = r.source === 'ncbi' ? 'bg-splace-blue-50 text-splace-blue-600' : 'bg-gray-100 text-gray-600';
         const sourceLabel = r.source === 'ncbi' ? 'NCBI' : 'File';
         const abbrevSpecies = tax.genus ? `${tax.genus.charAt(0)}.${tax.species ? ' ' + tax.species : ''}` : '';
+        const fullSpecies = `${tax.genus}${tax.species ? ' ' + tax.species : ''}`;
 
         return `
             <tr class="group">
@@ -644,13 +670,14 @@ function renderRecords() {
                 <td class="px-3 py-2 text-xs text-gray-500" data-col="family">${tax.family || "—"}</td>
                 <td class="px-3 py-2 text-xs text-gray-500" data-col="genus"><em>${tax.genus}</em></td>
                 <td class="px-3 py-2 text-xs text-gray-500" data-col="species"><em>${abbrevSpecies}</em></td>
+                <td class="px-3 py-2 text-xs text-gray-500" data-col="authorship">${tax.authorship || "—"}</td>
                 <td class="px-3 py-2 text-center text-xs text-gray-600" data-col="pcgs">${counts.pcgs}</td>
                 <td class="px-3 py-2 text-center text-xs text-gray-600" data-col="rrnas">${counts.rrnas}</td>
                 <td class="px-3 py-2 text-center text-xs text-gray-600" data-col="trnas">${counts.trnas}</td>
                 <td class="px-3 py-2 text-center" data-col="source"><span class="text-xs px-1.5 py-0.5 rounded ${sourceClass}">${sourceLabel}</span></td>
                 <td class="px-3 py-2 text-right whitespace-nowrap">
-                    <button onclick="editRecord(${i})" class="text-gray-400 hover:text-splace-blue-600 transition-colors text-sm leading-none mr-2" title="Edit"><i class="fa-solid fa-pen-to-square"></i></button>
-                    <button onclick="removeRecord(${i})" class="text-gray-400 hover:text-red-500 transition-colors text-lg leading-none" title="Remove"><i class="fa-solid fa-xmark"></i></button>
+                    <button onclick="editRecord(${i})" class="text-gray-400 hover:text-splace-blue-600 transition-colors text-sm leading-none mr-2" data-tippy-content="Edit <em>${fullSpecies}</em> (${r.accession})"><i class="fa-solid fa-pen-to-square"></i></button>
+                    <button onclick="removeRecord(${i})" class="text-gray-400 hover:text-red-500 transition-colors text-lg leading-none" data-tippy-content="Remove <em>${fullSpecies}</em> (${r.accession})"><i class="fa-solid fa-xmark"></i></button>
                 </td>
             </tr>
         `;
@@ -706,7 +733,8 @@ function renderGeneSelection() {
     const featureTypes = new Map();
     const genesByType = new Map();
 
-    for (const record of state.records) {
+    for (let ri = 0; ri < state.records.length; ri++) {
+        const record = state.records[ri];
         const assignedTrnas = new Set();
         for (const feat of record.features) {
             featureTypes.set(feat.type, (featureTypes.get(feat.type) || 0) + 1);
@@ -741,8 +769,9 @@ function renderGeneSelection() {
                 seqLen = seq.length;
             } catch (e) { /* ignore */ }
 
-            const existing = geneMap.get(geneName) || { product: rawProduct, count: 0, seqLengths: [] };
+            const existing = geneMap.get(geneName) || { product: rawProduct, count: 0, recordIndices: new Set(), seqLengths: [] };
             existing.count++;
+            existing.recordIndices.add(ri);
             if (seqLen > 0) existing.seqLengths.push(seqLen);
             geneMap.set(geneName, existing);
         }
@@ -771,12 +800,17 @@ function renderGeneSelection() {
 
     renderGenes(genesByType);
 
-    // Init Tippy on feature switches
+    // Init Tippy on feature switches and record buttons
     if (typeof tippy !== "undefined") {
+        // Destroy old tippy instances to avoid duplicates on re-render
+        document.querySelectorAll('[data-tippy-content]').forEach(el => {
+            if (el._tippy) el._tippy.destroy();
+        });
         tippy('[data-tippy-content]', {
             theme: 'splace',
             placement: 'top',
             arrow: true,
+            allowHTML: true,
         });
     }
 }
@@ -785,7 +819,8 @@ function renderGenes(genesByType) {
     if (!genesByType) {
         genesByType = new Map();
         const dataType = state.detectedDataType;
-        for (const record of state.records) {
+        for (let ri = 0; ri < state.records.length; ri++) {
+            const record = state.records[ri];
             const assignedTrnas = new Set();
             for (const feat of record.features) {
                 let geneName = null;
@@ -815,8 +850,9 @@ function renderGenes(genesByType) {
                     seqLen = seq.length;
                 } catch (e) { /* ignore */ }
 
-                const existing = geneMap.get(geneName) || { product: rawProduct, count: 0, seqLengths: [] };
+                const existing = geneMap.get(geneName) || { product: rawProduct, count: 0, recordIndices: new Set(), seqLengths: [] };
                 existing.count++;
+                existing.recordIndices.add(ri);
                 if (seqLen > 0) existing.seqLengths.push(seqLen);
                 geneMap.set(geneName, existing);
             }
@@ -829,8 +865,11 @@ function renderGenes(genesByType) {
     for (const [type, geneMap] of genesByType) {
         if (!state.selectedFeatureTypes.has(type)) continue;
         for (const [name, info] of geneMap) {
-            const existing = visibleGenes.get(name) || { product: info.product, count: 0, types: [], seqLengths: [] };
+            const existing = visibleGenes.get(name) || { product: info.product, count: 0, recordIndices: new Set(), types: [], seqLengths: [] };
             existing.count += info.count;
+            if (info.recordIndices) {
+                for (const idx of info.recordIndices) existing.recordIndices.add(idx);
+            }
             existing.types.push(type);
             existing.seqLengths.push(...(info.seqLengths || []));
             visibleGenes.set(name, existing);
@@ -842,19 +881,13 @@ function renderGenes(genesByType) {
     genesList.innerHTML = sortedGenes.map(([name, info]) => {
         const active = state.selectedGenes.has(name);
         const lengths = info.seqLengths;
+        const uniqueRecords = info.recordIndices ? info.recordIndices.size : info.count;
         let avgLen = 0, minLen = 0, maxLen = 0;
         if (lengths.length > 0) {
             avgLen = Math.round(lengths.reduce((a, b) => a + b, 0) / lengths.length);
             minLen = Math.min(...lengths);
             maxLen = Math.max(...lengths);
         }
-
-        const tooltipHtml = `<strong>${name}</strong><br>` +
-            `Feature: ${info.types.join(", ")}<br>` +
-            `Records: ${info.count}/${state.records.length}<br>` +
-            (lengths.length > 0
-                ? `Avg: ${avgLen.toLocaleString()} bp<br>Min: ${minLen.toLocaleString()} bp | Max: ${maxLen.toLocaleString()} bp`
-                : "No sequence data");
 
         const escapedName = name.replace(/'/g, "\\'");
 
@@ -865,7 +898,7 @@ function renderGenes(genesByType) {
                     <span class="switch-knob-sm"></span>
                 </span>
                 <span class="gene-name">${name}</span>
-                <span class="gene-count">${info.count}/${state.records.length}</span>
+                <span class="gene-count">${uniqueRecords}/${state.records.length}</span>
                 ${lengths.length > 0 ? `<span class="gene-len">~${avgLen} bp</span>` : ''}
             </div>
         `;
@@ -884,6 +917,7 @@ function renderGenes(genesByType) {
 
         sortedGenes.forEach(([name, info]) => {
             const lengths = info.seqLengths;
+            const uniqueRecords = info.recordIndices ? info.recordIndices.size : info.count;
             let avgLen = 0, minLen = 0, maxLen = 0;
             if (lengths.length > 0) {
                 avgLen = Math.round(lengths.reduce((a, b) => a + b, 0) / lengths.length);
@@ -891,12 +925,17 @@ function renderGenes(genesByType) {
                 maxLen = Math.max(...lengths);
             }
 
+            const duplicateNote = info.count > uniqueRecords
+                ? `<br><em>${info.count} features in ${uniqueRecords} records (some records have duplicates)</em>`
+                : "";
+
             const tooltipHtml = `<strong>${name}</strong><br>` +
                 `Feature: ${info.types.join(", ")}<br>` +
-                `Records: ${info.count}/${state.records.length}<br>` +
+                `Records: ${uniqueRecords}/${state.records.length}` +
+                duplicateNote +
                 (lengths.length > 0
-                    ? `Avg: ${avgLen.toLocaleString()} bp<br>Min: ${minLen.toLocaleString()} bp | Max: ${maxLen.toLocaleString()} bp`
-                    : "No sequence data");
+                    ? `<br>Avg: ${avgLen.toLocaleString()} bp<br>Min: ${minLen.toLocaleString()} bp | Max: ${maxLen.toLocaleString()} bp`
+                    : "<br>No sequence data");
 
             const el = document.querySelector(`.gene-chip[data-gene="${name}"]`);
             if (el) {
@@ -909,6 +948,50 @@ function renderGenes(genesByType) {
                 });
             }
         });
+    }
+
+    // Render missing gene warnings for selected genes
+    const warningsDiv = document.getElementById("geneMissingWarnings");
+    if (warningsDiv) {
+        const selectedVisible = sortedGenes.filter(([name]) => state.selectedGenes.has(name));
+        const warningItems = [];
+
+        for (const [geneName, info] of selectedVisible) {
+            const presentIndices = info.recordIndices || new Set();
+            if (presentIndices.size >= state.records.length) continue;
+
+            const missingRecords = [];
+            for (let i = 0; i < state.records.length; i++) {
+                if (!presentIndices.has(i)) {
+                    const r = state.records[i];
+                    const tax = extractTaxonomy(r);
+                    const speciesName = `${tax.genus} ${tax.species}`.trim() || r.organism || "Unknown";
+                    const identifier = r.source === "ncbi" ? r.accession : (r.fileName || r.accession);
+                    missingRecords.push(`<em>${speciesName}</em> <span class="text-gray-400">(${identifier})</span>`);
+                }
+            }
+
+            if (missingRecords.length > 0) {
+                warningItems.push(
+                    `<div class="flex items-start gap-2 text-sm">` +
+                    `<i class="fa-solid fa-triangle-exclamation text-amber-500 mt-0.5 flex-shrink-0"></i>` +
+                    `<div><strong>${geneName}</strong> — missing in ${missingRecords.length} record${missingRecords.length > 1 ? 's' : ''}: ${missingRecords.join(", ")}</div>` +
+                    `</div>`
+                );
+            }
+        }
+
+        if (warningItems.length > 0) {
+            warningsDiv.innerHTML =
+                `<div class="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">` +
+                `<div class="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-1"><i class="fa-solid fa-circle-exclamation mr-1"></i>Missing Genes</div>` +
+                warningItems.join("") +
+                `</div>`;
+            warningsDiv.classList.remove("hidden");
+        } else {
+            warningsDiv.innerHTML = "";
+            warningsDiv.classList.add("hidden");
+        }
     }
 }
 
@@ -1015,6 +1098,7 @@ async function fetchTaxonomyFromGBIF(speciesName) {
             class: accepted.class || "",
             order: accepted.order || "",
             family: accepted.family || "",
+            authorship: accepted.authorship || "",
         };
     }
     return null;
@@ -1026,7 +1110,20 @@ async function fetchAllTaxonomy() {
     const btn = document.getElementById("fetchTaxonomyBtn");
     btn.disabled = true;
 
-    showProgress("Fetching Taxonomy from GBIF", `0 of ${state.records.length}`);
+    // Group records by organism name to avoid duplicate GBIF queries
+    const speciesMap = new Map(); // organism name → [record indices]
+    for (let i = 0; i < state.records.length; i++) {
+        const organism = (state.records[i].editedOrganism || state.records[i].organism || "").trim();
+        if (!organism) continue;
+        if (!speciesMap.has(organism)) speciesMap.set(organism, []);
+        speciesMap.get(organism).push(i);
+    }
+
+    const uniqueSpecies = [...speciesMap.keys()];
+    const totalUnique = uniqueSpecies.length;
+    const totalRecords = state.records.length;
+
+    showProgress("Fetching Taxonomy from GBIF", `0 of ${totalUnique} species`);
     document.getElementById("progressDetail").textContent = "dataFishing (Rabelo et al. 2025)";
 
     let successCount = 0;
@@ -1034,54 +1131,49 @@ async function fetchAllTaxonomy() {
     let completed = 0;
     const BATCH_SIZE = 5;
 
-    for (let i = 0; i < state.records.length; i += BATCH_SIZE) {
-        const batch = state.records.slice(i, i + BATCH_SIZE);
-        const promises = batch.map(async (record) => {
-            const organism = record.editedOrganism || record.organism || "";
-
-            if (!organism) {
-                log(`Skipping ${record.accession}: no organism name`);
-                errorCount++;
-                completed++;
-                updateProgress(completed, state.records.length, record.accession);
-                return;
-            }
-
+    for (let i = 0; i < uniqueSpecies.length; i += BATCH_SIZE) {
+        const batch = uniqueSpecies.slice(i, i + BATCH_SIZE);
+        const promises = batch.map(async (organism) => {
             try {
                 const taxonomy = await fetchTaxonomyFromGBIF(organism);
                 if (taxonomy) {
-                    record.taxonomyRanks = {
-                        kingdom: taxonomy.kingdom,
-                        phylum: taxonomy.phylum,
-                        class: taxonomy.class,
-                        order: taxonomy.order,
-                        family: taxonomy.family,
-                    };
-                    if (taxonomy.family && !record.editedFamily) {
-                        record.editedFamily = taxonomy.family;
+                    // Apply taxonomy data to ALL records with this organism name
+                    for (const idx of speciesMap.get(organism)) {
+                        const record = state.records[idx];
+                        record.taxonomyRanks = {
+                            kingdom: taxonomy.kingdom,
+                            phylum: taxonomy.phylum,
+                            class: taxonomy.class,
+                            order: taxonomy.order,
+                            family: taxonomy.family,
+                            authorship: taxonomy.authorship,
+                        };
+                        if (taxonomy.family && !record.editedFamily) {
+                            record.editedFamily = taxonomy.family;
+                        }
                     }
                     successCount++;
-                    log(`Taxonomy: ${record.accession} → ${taxonomy.kingdom}, ${taxonomy.phylum}, ${taxonomy.class}, ${taxonomy.order}, ${taxonomy.family}`);
                 } else {
-                    log(`No GBIF results for ${organism}`);
                     errorCount++;
                 }
-            } catch (e) {
-                log(`Error fetching taxonomy for ${organism}: ${e.message}`);
+            } catch {
                 errorCount++;
             }
 
             completed++;
-            updateProgress(completed, state.records.length, `<em>${organism}</em>`);
+            updateProgress(completed, totalUnique, `<em>${organism}</em>`);
         });
 
         await Promise.all(promises);
-        if (i + BATCH_SIZE < state.records.length) {
+        if (i + BATCH_SIZE < uniqueSpecies.length) {
             await new Promise(r => setTimeout(r, 200));
         }
     }
 
-    hideProgress(`Taxonomy fetched: ${successCount} OK${errorCount > 0 ? `, ${errorCount} failed` : ""}`);
+    // Count records without organism name
+    const skippedCount = totalRecords - [...speciesMap.values()].reduce((a, b) => a + b.length, 0);
+
+    hideProgress(`Taxonomy fetched: ${successCount} species OK${errorCount > 0 ? `, ${errorCount} failed` : ""}${totalUnique < totalRecords ? ` (${totalUnique} unique queries for ${totalRecords} records)` : ""}`);
     btn.disabled = false;
     renderRecords();
 }
@@ -1146,6 +1238,7 @@ window.editRecord = function (index) {
     // Set GBIF button state based on current species
     const speciesErr = validateSpeciesName(currentOrganism);
     document.getElementById("editGbifBtn").disabled = !!speciesErr;
+    document.getElementById("editGbifBtn").dataset.fetchedAuthorship = "";
 
     document.getElementById("editModal").classList.remove("hidden");
 };
@@ -1162,6 +1255,7 @@ const HEADER_FIELDS = [
     { key: "order", label: "Order", getter: (r, tax) => tax.order || "NA" },
     { key: "family", label: "Family", getter: (r, tax) => tax.family || "NA" },
     { key: "genus", label: "Genus", getter: (r, tax) => tax.genus || "NA" },
+    { key: "authorship", label: "Authorship", getter: (r, tax) => tax.authorship || "NA" },
 ];
 
 function getHeaderSeparator() {
@@ -1367,7 +1461,6 @@ function downloadIndividualFasta() {
         const blob = new Blob([content], { type: "text/plain" });
         saveAs(blob, `${name}.fasta`);
     }
-    log(`Downloaded ${files.size} individual FASTA files`);
 }
 
 async function downloadZip() {
@@ -1382,19 +1475,6 @@ async function downloadZip() {
     }
     const blob = await zip.generateAsync({ type: "blob" });
     saveAs(blob, `splace_${state.detectedDataType || "genes"}_genes.zip`);
-    log(`Downloaded ZIP with ${files.size} FASTA files`);
-}
-
-// ========================================================================
-// Logging
-// ========================================================================
-function log(msg) {
-    const section = document.getElementById("logSection");
-    const output = document.getElementById("logOutput");
-    section.classList.remove("hidden");
-    const time = new Date().toLocaleTimeString();
-    output.textContent += `[${time}] ${msg}\n`;
-    output.scrollTop = output.scrollHeight;
 }
 
 // ========================================================================
@@ -1406,7 +1486,6 @@ function handleFiles(fileList) {
     const validFiles = [];
     for (const file of fileList) {
         if (!GENBANK_EXTENSIONS.test(file.name)) {
-            log(`Skipping non-GenBank file: ${file.name}`);
             continue;
         }
         validFiles.push(file);
@@ -1429,9 +1508,8 @@ function handleFiles(fileList) {
                 record.fileDate = new Date(file.lastModified);
                 if (!record.accession) record.accession = file.name.replace(GENBANK_EXTENSIONS, "");
                 state.records.push(record);
-                log(`Loaded: ${record.accession} - ${record.organism} (${record.features.length} features)`);
-            } catch (err) {
-                log(`Error parsing ${file.name}: ${err.message}`);
+            } catch {
+                // Error parsing file, skipped
             }
 
             loaded++;
@@ -1465,8 +1543,8 @@ async function traverseEntry(entry) {
             try {
                 const file = await readEntryAsFile(entry);
                 files.push(file);
-            } catch (e) {
-                log(`Error reading file ${entry.name}: ${e.message}`);
+            } catch {
+                // Error reading file entry, skipped
             }
         }
     } else if (entry.isDirectory) {
@@ -1498,17 +1576,14 @@ async function handleDroppedItems(dataTransfer) {
 
         if (entries.length > 0) {
             showProgress("Scanning folders", "Looking for GenBank files...");
-            log("Scanning dropped items for GenBank files...");
             for (const entry of entries) {
                 const files = await traverseEntry(entry);
                 allFiles.push(...files);
             }
             if (allFiles.length > 0) {
-                log(`Found ${allFiles.length} GenBank file(s)`);
                 document.getElementById("progressModal").classList.add("hidden");
                 handleFiles(allFiles);
             } else {
-                log("No GenBank files found in dropped items");
                 hideProgress("No GenBank files found");
             }
             return;
@@ -1550,8 +1625,8 @@ document.addEventListener("DOMContentLoaded", () => {
             const records = await fetchMultiple(accessions);
             state.records.push(...records);
             renderRecords();
-        } catch (e) {
-            log(`Fetch error: ${e.message}`);
+        } catch {
+            // Fetch error, handled by progress UI
         }
         btn.disabled = false;
         btn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Fetch';
@@ -1626,6 +1701,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 document.getElementById("editClassInput").value = taxonomy.class || "";
                 document.getElementById("editOrderInput").value = taxonomy.order || "";
                 document.getElementById("editFamilyInput").value = taxonomy.family || "";
+                // Store authorship for saving later
+                this.dataset.fetchedAuthorship = taxonomy.authorship || "";
                 statusEl.innerHTML = `Found via <em>dataFishing</em> (Rabelo et al. 2025)`;
                 statusEl.className = "text-xs text-green-600 mt-1";
                 document.getElementById("editFamilyError").classList.add("hidden");
@@ -1676,12 +1753,14 @@ document.addEventListener("DOMContentLoaded", () => {
         if (family) r.editedFamily = family;
 
         // Save taxonomy ranks
+        const fetchedAuthorship = document.getElementById("editGbifBtn").dataset.fetchedAuthorship || "";
         r.taxonomyRanks = {
             kingdom: kingdom,
             phylum: phylum,
             class: klass,
             order: order,
             family: family || (r.taxonomyRanks && r.taxonomyRanks.family) || "",
+            authorship: fetchedAuthorship || (r.taxonomyRanks && r.taxonomyRanks.authorship) || "",
         };
 
         document.getElementById("editModal").classList.add("hidden");
@@ -1731,4 +1810,14 @@ document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll('input[name="headerSeparator"]').forEach(radio => {
         radio.addEventListener("change", () => renderHeaderBuilder());
     });
+
+    // Initialize Tippy on static elements
+    if (typeof tippy !== "undefined") {
+        tippy('[data-tippy-content]', {
+            theme: 'splace',
+            placement: 'top',
+            arrow: true,
+            allowHTML: true,
+        });
+    }
 });

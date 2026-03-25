@@ -183,8 +183,14 @@
             border-bottom: 1px solid #f3f4f6;
             transition: background 0.1s;
         }
+        .records-table tbody tr:nth-child(even) {
+            background: #d5d9f3;
+        }
+        .records-table tbody tr:nth-child(odd) {
+            background: #ffffff;
+        }
         .records-table tbody tr:hover {
-            background: #f9fafb;
+            background: #eef0fb;
         }
         .records-table tbody tr:last-child {
             border-bottom: none;
@@ -267,11 +273,11 @@
         <div class="flex gap-2">
             <textarea id="accessionInput" rows="2" class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-splace-blue-400 focus:border-splace-blue-500 resize-none font-sans" placeholder="NC_061537, NC_023122, DQ080041..."></textarea>
             <div class="flex flex-col gap-2">
-                <button id="fetchBtn" class="flex-1 bg-splace-blue-600 hover:bg-splace-blue-700 text-white px-5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap">
-                    <i class="fa-solid fa-magnifying-glass mr-1"></i> Fetch
-                </button>
-                <button id="exampleBtn" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600 px-5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap">
+                <button id="exampleBtn" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600 px-5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap" data-tippy-content="Load example accession numbers to try SPLACE">
                     <i class="fa-solid fa-flask mr-1"></i> Example
+                </button>
+                <button id="fetchBtn" class="flex-1 bg-splace-blue-600 hover:bg-splace-blue-700 text-white px-5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap" data-tippy-content="Fetch GenBank records from NCBI for the entered accession numbers">
+                    <i class="fa-solid fa-magnifying-glass mr-1"></i> Fetch
                 </button>
             </div>
         </div>
@@ -315,6 +321,7 @@
             <button class="col-eye-toggle hover:text-splace-blue-600 transition-colors" data-col-toggle="family"><i class="fa-solid fa-eye"></i> Family</button>
             <button class="col-eye-toggle hover:text-splace-blue-600 transition-colors" data-col-toggle="genus"><i class="fa-solid fa-eye"></i> Genus</button>
             <button class="col-eye-toggle hover:text-splace-blue-600 transition-colors" data-col-toggle="species"><i class="fa-solid fa-eye"></i> Species</button>
+            <button class="col-eye-toggle hover:text-splace-blue-600 transition-colors" data-col-toggle="authorship"><i class="fa-solid fa-eye"></i> Authorship</button>
             <button class="col-eye-toggle hover:text-splace-blue-600 transition-colors" data-col-toggle="pcgs"><i class="fa-solid fa-eye"></i> PCGs</button>
             <button class="col-eye-toggle hover:text-splace-blue-600 transition-colors" data-col-toggle="rrnas"><i class="fa-solid fa-eye"></i> rRNAs</button>
             <button class="col-eye-toggle hover:text-splace-blue-600 transition-colors" data-col-toggle="trnas"><i class="fa-solid fa-eye"></i> tRNAs</button>
@@ -332,6 +339,7 @@
                         <th class="px-3 py-2" data-col="family">Family</th>
                         <th class="px-3 py-2" data-col="genus">Genus</th>
                         <th class="px-3 py-2" data-col="species">Species</th>
+                        <th class="px-3 py-2" data-col="authorship">Authorship</th>
                         <th class="px-3 py-2 text-center" data-col="pcgs">PCGs</th>
                         <th class="px-3 py-2 text-center" data-col="rrnas">rRNAs</th>
                         <th class="px-3 py-2 text-center" data-col="trnas">tRNAs</th>
@@ -367,6 +375,7 @@
             </div>
         </div>
         <div id="genesList" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2"></div>
+        <div id="geneMissingWarnings" class="mt-4 hidden"></div>
     </section>
 
     <!-- Download Actions -->
@@ -374,16 +383,6 @@
         <button id="downloadBtn" class="w-full bg-splace-blue-600 hover:bg-splace-blue-700 text-white px-6 py-3 rounded-xl font-medium transition-colors text-center">
             <i class="fa-solid fa-download mr-2"></i> Download FASTA Files
         </button>
-    </section>
-
-    <!-- Status Log -->
-    <section id="logSection" class="hidden">
-        <details class="bg-gray-800 rounded-xl overflow-hidden">
-            <summary class="px-4 py-2 text-sm text-gray-300 cursor-pointer hover:bg-gray-700">
-                <i class="fa-solid fa-terminal mr-1"></i> Processing Log
-            </summary>
-            <pre id="logOutput" class="px-4 py-3 text-xs text-green-400 max-h-48 overflow-y-auto font-mono"></pre>
-        </details>
     </section>
 
 </main>
