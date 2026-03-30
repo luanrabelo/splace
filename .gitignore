@@ -41,7 +41,62 @@ beachmark.py
 *.sif
 datasets/
 *-cwd
-splace_app/
 .pytest_cache
 # Flutter
 .flutter-plugins
+cp/
+results*/
+
+# Arquivos e pastas gerais
+.DS_Store
+.idea/
+.vscode/
+*.iml
+
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+
+# Logs
+*.log
+
+# Android
+android/.gradle/
+android/local.properties
+android/**/key.properties
+android/**/keystore.jks
+android/**/keystore.properties
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/App.framework
+ios/Flutter/Flutter.framework
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+ios/Runner/GeneratedPluginRegistrant.*
+
+# macOS
+macos/Flutter/ephemeral/
+macos/Pods/
+
+# Windows
+windows/flutter/ephemeral/
+
+# Linux
+linux/flutter/ephemeral/
+
+# Web
+.build/
+firebase-debug.log
+
+# Coverage / testes
+coverage/
+
+# Arquivos temporários
+*.swp
+*~
+splace_app/

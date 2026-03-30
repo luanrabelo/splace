@@ -1,14 +1,35 @@
 import asyncio
 import logging
 import os
+import tempfile
+import threading
+import warnings
 
-from Bio import SeqIO
+from Bio import BiopythonParserWarning, SeqIO
 from SynGenes import SynGenes
 
 from concurrent.futures import ThreadPoolExecutor
 
+# Suppress BiopythonParserWarning globally — warnings.catch_warnings() is not
+# thread-safe, so per-thread suppression inside ThreadPoolExecutor is unreliable.
+warnings.filterwarnings("ignore", category=BiopythonParserWarning)
+
 GENE_NAME_CACHE = {}
+
+# Thread-safe counter for unique record IDs across all GenBank files
+_uid_lock = threading.Lock()
+_uid_counter = 0
+
+def _next_uid():
+    """Return the next unique 5-digit ID string, thread-safe."""
+    global _uid_counter
+    with _uid_lock:
+        _uid_counter += 1
+        return f"{_uid_counter:05d}"
 sg = SynGenes(verbose=False)
+# Workaround: SynGenes 1.0.6 builds log path without separator and may
+# write to a read-only filesystem inside containers. Redirect to temp dir.
+SynGenes.cwd_path = tempfile.gettempdir() + os.sep
 
 async def genbank_to_fasta(**kwargs):
     """
@@ -64,9 +85,12 @@ async def genbank_to_fasta(**kwargs):
         best_per_gene = {}  # (gene_name, species_key) -> (header, seq_str, seq_len)
 
         try:
-            for record in SeqIO.parse(input_gb_file, "genbank"):
+            records = list(SeqIO.parse(input_gb_file, "genbank"))
+            for record in records:
                 species = getattr(record, 'annotations', {}).get('organism', f"Unknown Species in {os.path.basename(input_gb_file)}")
-
+                record_uid = _next_uid()
+                record_id = getattr(record, 'id', 'N/A')
+                header = f">{str(species).replace(' ', '_')}_{record_id}_{record_uid}"
                 for feature in record.features:
                     if feature.type in target_feature_types:
                         product = feature.qualifiers.get('product', [None])[0]
@@ -93,10 +117,21 @@ async def genbank_to_fasta(**kwargs):
                         if genes_list and gene_name not in genes_list:
                             continue
 
-                        header = f">{str(species).replace(' ', '_')}_{getattr(record, 'id', 'N/A')}"
-                        seq_str = str(feature.extract(record.seq))
+                        # Skip features with suspicious origin-wrapping locations
+                        # (start > end) that can cause Biopython to hang
+                        loc = feature.location
+                        if hasattr(loc, 'start') and hasattr(loc, 'end'):
+                            if int(loc.start) > int(loc.end):
+                                logging.warning(f"Skipping feature '{raw_name}' in {os.path.basename(input_gb_file)}: invalid location {loc} (start > end)")
+                                continue
+
+                        try:
+                            seq_str = str(feature.extract(record.seq))
+                        except Exception as e:
+                            logging.warning(f"Skipping feature '{raw_name}' in {os.path.basename(input_gb_file)}: extraction failed ({e})")
+                            continue
                         seq_len = len(seq_str)
-                        species_key = f"{species}_{record.id}"
+                        species_key = f"{species}_{record_id}_{record_uid}"
                         key = (gene_name, species_key)
 
                         if key not in best_per_gene or seq_len > best_per_gene[key][2]:

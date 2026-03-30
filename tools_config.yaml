@@ -1,0 +1,25 @@
+# SPLACE - Tool Configuration File
+# Customize the parameters for each external tool used in the pipeline.
+# For more details, see the README or each tool's documentation.
+
+mafft:
+  # Additional MAFFT parameters (e.g., "--auto", "--localpair --maxiterate 1000")
+  params: "--auto"
+  # Preserve original case of sequences (uppercase/lowercase)
+  preserve_case: true
+  # Maximum time (in seconds) allowed per alignment
+  timeout: 3600
+
+trimal:
+  # TrimAl trimming strategy (e.g., "-automated1", "-gappyout", "-strict")
+  params: "-automated1"
+  # Maximum time (in seconds) allowed per trimming
+  timeout: 3600
+
+iqtree:
+  # Number of ultrafast bootstrap replicates (-B)
+  bootstrap: 1000
+  # Substitution model (-m). Use "MFP" for automatic ModelFinder selection
+  model: "MFP"
+  # Any extra IQ-TREE arguments (e.g., "-alrt 1000" for SH-aLRT test)
+  extra_args: ""

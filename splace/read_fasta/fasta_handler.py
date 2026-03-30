@@ -2,13 +2,29 @@ import asyncio
 import logging
 import os
 import re
+import tempfile
+import threading
 
 from Bio import SeqIO
 from SynGenes import SynGenes
 from concurrent.futures import ThreadPoolExecutor
 
 sg = SynGenes(verbose=False)
+# Workaround: SynGenes 1.0.6 builds log path without separator and may
+# write to a read-only filesystem inside containers. Redirect to temp dir.
+SynGenes.cwd_path = tempfile.gettempdir() + os.sep
 GENE_NAME_CACHE = {}
+
+# Thread-safe counter for unique record IDs across all FASTA files
+_uid_lock = threading.Lock()
+_uid_counter = 0
+
+def _next_uid():
+    """Return the next unique 5-digit ID string, thread-safe."""
+    global _uid_counter
+    with _uid_lock:
+        _uid_counter += 1
+        return f"{_uid_counter:05d}"
 
 async def fasta_extractor(**kwargs):
     """
@@ -54,9 +70,11 @@ async def fasta_extractor(**kwargs):
 
         # Base name for the header
         file_base_name = os.path.splitext(os.path.basename(input_file))[0]
+        file_uid = _next_uid()
+        header_id = f"{file_base_name}_{file_uid}"
 
         # Collect best (longest) sequence per gene per source to handle duplicates
-        best_per_gene = {}  # (gene_name, file_base_name) -> (seq_str, seq_len)
+        best_per_gene = {}  # (gene_name, header_id) -> (seq_str, seq_len)
 
         try:
             for record in SeqIO.parse(input_file, "fasta"):
@@ -134,11 +152,11 @@ async def fasta_extractor(**kwargs):
 
                     seq_str = str(record.seq)
                     seq_len = len(seq_str)
-                    key = (gene_name, file_base_name)
+                    key = (gene_name, header_id)
 
                     if key not in best_per_gene or seq_len > best_per_gene[key][1]:
                         if key in best_per_gene:
-                            logging.info(f"Duplicate gene '{gene_name}' in {file_base_name}: keeping longer ({seq_len}bp over {best_per_gene[key][1]}bp)")
+                            logging.info(f"Duplicate gene '{gene_name}' in {header_id}: keeping longer ({seq_len}bp over {best_per_gene[key][1]}bp)")
                         best_per_gene[key] = (seq_str, seq_len)
 
             # Write best sequences to files

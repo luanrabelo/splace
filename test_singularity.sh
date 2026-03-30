@@ -1,6 +1,6 @@
-SIF_PATH=splace.sif
-INPUT_DIR=datasets/mitochondrial/genbank/Bufonidae
-OUTPUT_DIR=results/Bufonidae
+SIF_PATH=splace_v4.sif
+INPUT_DIR=cp
+OUTPUT_DIR=results_cp
 THREADS=12
 
 mkdir -p $OUTPUT_DIR
@@ -10,8 +10,9 @@ singularity run \
 "$SIF_PATH" \
 -i /app/input_data \
 -o /app/output_data \
---gb-type mt \
+--gb-type cp \
 --align \
 --trimal \
 --threads "$THREADS" \
---iqtree
+--iqtree \
+--feature-types CDS 

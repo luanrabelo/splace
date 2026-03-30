@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import os
 import sys
+import yaml
 
 __authors__     = "Renato Oliveira and Luan Rabelo"
 __license__     = "GPL-3.0"
@@ -129,6 +130,18 @@ pipeline_group.add_argument(
     help="Allow missing data in the supermatrix. Missing genes are filled with '?' characters. "
          "Without this flag, genes absent from any taxon are removed from all."
 )
+pipeline_group.add_argument(
+    "--config",
+    type=str,
+    default=None,
+    help="Path to a YAML configuration file for MAFFT, TrimAl, and IQ-TREE parameters. "
+         "See tools_config.yaml for the default template."
+)
+pipeline_group.add_argument(
+    "--overwrite",
+    action="store_true",
+    help="Overwrite existing output directories if they already exist."
+)
 
 if __name__ == "__main__":
     print(f"\n{'#'*70}\n")
@@ -143,29 +156,33 @@ if __name__ == "__main__":
     
     tool_env = "splace_env"
     conda_env = os.getenv("CONDA_DEFAULT_ENV")
+    in_container = os.path.exists("/.singularity.d") or os.getenv("SINGULARITY_CONTAINER") is not None
 
-    if not shutil.which("conda"):
-        logging.error("Conda is not installed or not found in PATH. Please install Conda and try again.")
-        sys.exit(1)
+    if not in_container:
+        if not shutil.which("conda"):
+            logging.error("Conda is not installed or not found in PATH. Please install Conda and try again.")
+            sys.exit(1)
 
-    try:
-        conda_envs = subprocess.run(
-            ["conda", "env", "list"],
-            capture_output=True,
-            text=True,
-            check=True
-        ).stdout.splitlines()
-    except subprocess.CalledProcessError:
-        logging.error("Failed to list Conda environments.")
-        sys.exit(1)
-    
-    if not any(tool_env in env for env in conda_envs):
-        logging.error(f"The '{tool_env}' conda environment does not exist. Please create it using the provided environment.yml file.")
-        sys.exit(1)
+        try:
+            conda_envs = subprocess.run(
+                ["conda", "env", "list"],
+                capture_output=True,
+                text=True,
+                check=True
+            ).stdout.splitlines()
+        except subprocess.CalledProcessError:
+            logging.error("Failed to list Conda environments.")
+            sys.exit(1)
 
-    if conda_env != tool_env:
-        logging.warning(f"Activate the '{tool_env}' conda environment before running the {__tool__}. Current environment: {conda_env}. Run 'conda activate {tool_env}' and try again.")
-        sys.exit(1)
+        if not any(tool_env in env for env in conda_envs):
+            logging.error(f"The '{tool_env}' conda environment does not exist. Please create it using the provided environment.yml file.")
+            sys.exit(1)
+
+        if conda_env != tool_env:
+            logging.warning(f"Activate the '{tool_env}' conda environment before running the {__tool__}. Current environment: {conda_env}. Run 'conda activate {tool_env}' and try again.")
+            sys.exit(1)
+    else:
+        logging.info("Running inside a Singularity container.")
 
     args = parser.parse_args()
 
@@ -185,6 +202,23 @@ if __name__ == "__main__":
     if args.feature_types:
         feature_types = [ft.strip() for ft in args.feature_types.split(",") if ft.strip()]
         logging.info(f"Using feature types: {feature_types}")
+
+    # Load tool configuration
+    tool_config = {
+        "mafft": {"params": "--auto", "preserve_case": True, "timeout": 3600},
+        "trimal": {"params": "-automated1", "timeout": 3600},
+        "iqtree": {"bootstrap": 1000, "model": "MFP", "extra_args": ""},
+    }
+    if args.config:
+        if not os.path.isfile(args.config):
+            logging.error(f"Config file '{args.config}' not found.")
+            sys.exit(1)
+        with open(args.config, "r") as cfg_file:
+            user_config = yaml.safe_load(cfg_file) or {}
+        for section in tool_config:
+            if section in user_config and isinstance(user_config[section], dict):
+                tool_config[section].update(user_config[section])
+        logging.info(f"Loaded tool configuration from: {args.config}")
 
     # Initialize Benchmark
     from splace.utils import Benchmark
@@ -222,17 +256,16 @@ if __name__ == "__main__":
             logging.error("The argument --iqtree requires --trimal to be specified.")
             sys.exit(1)
 
-        if os.path.exists(os.path.join(args.output_dir, "markers_fasta")):
-            logging.error(msg=f"Output directory '{os.path.join(args.output_dir, 'markers_fasta')}' already exists. Please remove it and try again.")
-            sys.exit(1)
-
-        if os.path.exists(os.path.join(args.output_dir, "aligned_markers")):
-            logging.error(msg=f"Output directory '{os.path.join(args.output_dir, 'aligned_markers')}' already exists. Please remove it and try again.")
-            sys.exit(1)
-        
-        if os.path.exists(os.path.join(args.output_dir, "phylogeny")):
-            logging.error(msg=f"Output directory '{os.path.join(args.output_dir, 'phylogeny')}' already exists. Please remove it and try again.")
-            sys.exit(1)
+        subdirs_to_check = ["markers_fasta", "aligned_markers", "phylogeny"]
+        for subdir in subdirs_to_check:
+            subdir_path = os.path.join(args.output_dir, subdir)
+            if os.path.exists(subdir_path):
+                if args.overwrite:
+                    shutil.rmtree(subdir_path)
+                    logging.info(f"Removed existing directory: {subdir_path}")
+                else:
+                    logging.error(f"Output directory '{subdir_path}' already exists. Use --overwrite to replace it.")
+                    sys.exit(1)
 
 
         logging.info(msg=f"Found {len(genbank_files)} GenBank files and {len(fasta_files)} FASTA files. Processing...")
@@ -283,7 +316,10 @@ if __name__ == "__main__":
                     align_multiple_files(
                         fasta_files=converted_files,
                         output_dir=os.path.join(args.output_dir, "aligned_markers"),
-                        threads=args.threads
+                        threads=args.threads,
+                        mafft_params=tool_config["mafft"]["params"],
+                        preserve_case=tool_config["mafft"]["preserve_case"],
+                        timeout=tool_config["mafft"]["timeout"]
                     )
                 )
                 benchmark.stop("Alignment")
@@ -297,8 +333,9 @@ if __name__ == "__main__":
                         trim_multiple_files(
                             alignment_files=aligned_files,
                             output_dir=os.path.join(args.output_dir, "trimmed_markers"),
-                            trimal_params="-automated1",
-                            max_concurrent=args.threads
+                            trimal_params=tool_config["trimal"]["params"],
+                            max_concurrent=args.threads,
+                            timeout=tool_config["trimal"]["timeout"]
                         )
                     )
                     benchmark.stop("Trimming")
@@ -312,7 +349,11 @@ if __name__ == "__main__":
                             trimmed_files=trimmed_files,
                             output_dir=os.path.join(args.output_dir, "phylogeny"),
                             threads=args.threads,
-                            allow_missing=args.allow_missing
+                            allow_missing=args.allow_missing,
+                            bootstrap=tool_config["iqtree"]["bootstrap"],
+                            model=tool_config["iqtree"]["model"],
+                            extra_args=tool_config["iqtree"]["extra_args"],
+                            report_dir=args.output_dir
                         )
                         benchmark.stop("Phylogeny")
             

@@ -23,6 +23,9 @@
   - [Usage](#usage)
     - [Parameter Overview](#parameter-overview)
   - [Example Command](#example-command)
+  - [Tool Configuration](#tool-configuration)
+  - [Gene Presence Report](#gene-presence-report)
+  - [Sequence Identifiers](#sequence-identifiers)
 - [SPLACE Workflow](#splace-workflow)
 - [Citing SPLACE](#citing-splace)
 - [Contact](#contact)
@@ -121,8 +124,10 @@ The basic syntax is `python splace.py [input_dir] [output_dir] [options]`.
 | `--trimal` | Trimming | Enable trimming using **TrimAl**. |
 | `--iqtree` | Phylogeny | Enable phylogenetic inference using **IQ-TREE**. |
 | `--allow-missing` | Phylogeny | Allow missing data in the supermatrix (fills with `?`). Without this flag, genes absent from any taxon are removed. |
+| `--overwrite` | Output | Overwrite existing output directories if they already exist. Without this flag, SPLACE exits with an error when output directories are present. |
 | `--benchmark` | Performance | Enable execution time benchmarking. |
 | `-t`, `--threads` | Performance | Number of threads for parallel processing. Default: 4. |
+| `--config` | Configuration | Path to a YAML file with custom parameters for MAFFT, TrimAl, and IQ-TREE. See [Tool Configuration](#tool-configuration). |
 
 &nbsp;
 #### Example Command
@@ -153,6 +158,113 @@ python splace.py data/raw/ results_aln/ --gb-type mt --align --threads 4
 > Or simple formats where the gene name is clear.
 
 &nbsp;
+## Tool Configuration
+##### [:rocket: Go to Contents Overview](#contents-overview)
+
+You can customize the parameters of **MAFFT**, **TrimAl**, and **IQ-TREE** by providing a YAML configuration file via the `--config` flag. A default template is included in the repository as `tools_config.yaml`.
+
+```shell
+python splace.py -i data/raw/ -o results/ --gb-type mt --align --trimal --iqtree --config tools_config.yaml
+```
+
+#### Configuration File Format
+
+```yaml
+mafft:
+  # Additional MAFFT parameters (e.g., "--auto", "--localpair --maxiterate 1000")
+  params: "--auto"
+  # Preserve original case of sequences (uppercase/lowercase)
+  preserve_case: true
+  # Maximum time (in seconds) allowed per alignment
+  timeout: 3600
+
+trimal:
+  # TrimAl trimming strategy (e.g., "-automated1", "-gappyout", "-strict")
+  params: "-automated1"
+  # Maximum time (in seconds) allowed per trimming
+  timeout: 3600
+
+iqtree:
+  # Number of ultrafast bootstrap replicates (-B)
+  bootstrap: 1000
+  # Substitution model (-m). Use "MFP" for automatic ModelFinder selection
+  model: "MFP"
+  # Any extra IQ-TREE arguments (e.g., "-alrt 1000" for SH-aLRT test)
+  extra_args: ""
+```
+
+#### Parameter Reference
+
+| Section | Parameter | Default | Description |
+|:---|:---|:---|:---|
+| `mafft` | `params` | `--auto` | MAFFT alignment strategy. See [MAFFT documentation](https://mafft.cbrc.jp/alignment/software/manual/manual.html). |
+| `mafft` | `preserve_case` | `true` | Keep original sequence case (upper/lowercase). |
+| `mafft` | `timeout` | `3600` | Max seconds per alignment job. |
+| `trimal` | `params` | `-automated1` | TrimAl trimming method. Alternatives: `-gappyout`, `-strict`, `-gt 0.8`, etc. |
+| `trimal` | `timeout` | `3600` | Max seconds per trimming job. |
+| `iqtree` | `bootstrap` | `1000` | Ultrafast bootstrap replicates (`-B`). |
+| `iqtree` | `model` | `MFP` | Substitution model (`-m`). `MFP` runs ModelFinder automatically. |
+| `iqtree` | `extra_args` | *(empty)* | Additional IQ-TREE flags (e.g., `-alrt 1000 -abayes`). |
+
+> [!NOTE]
+> If `--config` is not provided, SPLACE uses the default values shown above. You only need to include the sections you want to override — missing sections will use their defaults.
+
+&nbsp;
+## Gene Presence Report
+##### [:rocket: Go to Contents Overview](#contents-overview)
+
+When phylogenetic analysis is enabled (`--iqtree`), SPLACE automatically generates a **gene presence/absence report** before building the supermatrix. This report helps you identify which taxa are missing which genes — especially useful with `--allow-missing` or when working with chloroplast datasets that contain many genes.
+
+#### Outputs
+
+| File | Location | Description |
+|:---|:---|:---|
+| `gene_presence_report.txt` | Main output directory | ASCII table printed to console and saved as text. Shows `+` (present) / `-` (absent) per gene per taxon, with totals. |
+| `gene_presence_heatmap.png` | Main output directory | Visual heatmap generated with seaborn. Rows are taxa (species in *italic* with accession number and unique ID), columns are genes. Green = present, red = absent. |
+
+#### Example Heatmap
+
+The heatmap provides a quick visual overview of data completeness across your dataset:
+- **Rows**: taxa labeled as *Genus species* (Accession) [UID]
+- **Columns**: gene names
+- **Colors**: green (`Present`) / red (`Absent`)
+
+The figure size adjusts dynamically based on the number of taxa and genes, ensuring readability even for large chloroplast datasets.
+
+> [!TIP]
+> Use the heatmap to decide whether `--allow-missing` is appropriate for your dataset. If most cells are green with only a few scattered red cells, allowing missing data is generally safe.
+
+&nbsp;
+## Sequence Identifiers
+##### [:rocket: Go to Contents Overview](#contents-overview)
+
+Each sequence extracted by SPLACE receives a unique **5-digit identifier** appended to its FASTA header. This ensures that every record is distinguishable, even when multiple GenBank files contain the same species and accession number (common in population-level studies).
+
+#### Header Format
+
+```
+>Genus_species_AccessionID_00001
+```
+
+| Component | Example | Description |
+|:---|:---|:---|
+| Species name | `Coffea_arabica` | Organism name with underscores (spaces removed for compatibility with MAFFT/TrimAl). |
+| Accession | `NC_008535.1` | GenBank accession or source identifier. |
+| Unique ID | `00001` | Sequential 5-digit identifier, unique per record. |
+
+#### Examples
+
+```
+>Coffea_arabica_NC_008535.1_00003
+>Carajasia_cangae_Asm_Contig_00001
+>Carajasia_cangae_Asm_Contig_00002
+>Cinchona_officinalis_OP946451.1_00004
+```
+
+> [!NOTE]
+> The unique ID is generated at extraction time and remains consistent across all gene files for the same record. This means `Coffea_arabica_NC_008535.1_00003` will appear with the same ID in every gene FASTA file (e.g., `atpB.fasta`, `rbcL.fasta`, etc.).
+
+&nbsp;
 ## SPLACE Workflow
 ##### [:rocket: Go to Contents Overview](#contents-overview)
 
@@ -163,17 +275,22 @@ graph TD
     B -->|FASTA| D[Parse Headers]
     C --> E[SynGenes Normalization]
     D --> E
-    E -->|Split| F[Marker FASTAs]
+    E -->|"Unique IDs (00001)"| F[Marker FASTAs]
     F --> G{--align?}
     G -->|Yes| H[MAFFT Alignment]
-    G -->|No| I[Raw Data]
+    G -->|No| END1[Raw Markers]
     H --> J{--trimal?}
     J -->|Yes| K[TrimAl Trimming]
-    J -->|No| L[Aligned Data]
+    J -->|No| END2[Aligned Markers]
     K --> M{--iqtree?}
-    L --> M
-    M -->|Yes| N[Concatenate NEXUS & IQ-TREE]
-    N --> O[Phylogenetic Tree]
+    M -->|No| END3[Trimmed Markers]
+    M -->|Yes| R[Gene Presence Report]
+    R -->|"heatmap + txt"| S[Supermatrix NEXUS]
+    S -->|"--allow-missing?"| T[IQ-TREE Analysis]
+    T --> O[Phylogenetic Tree]
+
+    style R fill:#f9f,stroke:#333
+    style O fill:#6f6,stroke:#333
 ```
 
 ## Citing **SPLACE**

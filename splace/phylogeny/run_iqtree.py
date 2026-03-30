@@ -1,8 +1,14 @@
 import logging
 import os
+import re
 import shutil
 import subprocess
 from Bio import SeqIO
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
 
 def check_iqtree():
     """Check if IQ-TREE is installed (iqtree or iqtree2)."""
@@ -13,7 +19,149 @@ def check_iqtree():
     else:
         return None
 
-def prepare_supermatrix(trimmed_files, output_dir, allow_missing=False):
+def _format_taxon_label(raw_name):
+    """Parse 'Genus_species_AccessionID_UID' into a display label with italic species.
+
+    Uses matplotlib mathtext for italic rendering. Spaces must be escaped
+    as '\\ ' inside math mode, otherwise they are ignored.
+
+    Expected format: Genus_species_NC_123456_00001 or Genus_species_SomeID_00001
+    The last 5-digit segment is always the unique record ID.
+    """
+    # Extract trailing 5-digit UID
+    uid_match = re.match(r"^(.+)_(\d{5})$", raw_name)
+    if uid_match:
+        base = uid_match.group(1)
+        uid = uid_match.group(2)
+    else:
+        base = raw_name
+        uid = ""
+
+    # Try to extract accession from base: Genus_species_NC_123456 or Genus_species_MN123456.1
+    acc_match = re.match(r"^(.+?)_(([A-Z]{1,2}_?\d{5,}(?:\.\d+)?))$", base)
+    if acc_match:
+        species_part = acc_match.group(1).replace("_", r"\ ")
+        accession = acc_match.group(2)
+        label = f"$\\it{{{species_part}}}$ ({accession})"
+    else:
+        species_part = base.replace("_", r"\ ")
+        label = f"$\\it{{{species_part}}}$"
+
+    if uid:
+        label += f" [{uid}]"
+    return label
+
+def _build_presence_report(all_taxa, gene_data, output_dir):
+    """Build a gene presence/absence text report and heatmap."""
+    sorted_taxa = sorted(all_taxa)
+    gene_names = [g[0] for g in gene_data]
+    num_genes = len(gene_names)
+    num_taxa = len(sorted_taxa)
+
+    # Build presence matrix
+    matrix = []
+    for taxon in sorted_taxa:
+        row = [1 if taxon in records else 0 for _, _, records in gene_data]
+        matrix.append(row)
+
+    # --- Text report (console + file) ---
+    taxon_col_w = max(len(t) for t in sorted_taxa + ["Taxon", "Present"]) + 2
+    gene_col_w = {g: max(len(g), 3) + 2 for g in gene_names}
+    total_col_w = max(len(f"0/{num_genes}"), len("Total")) + 2
+
+    header = f"{'Taxon':<{taxon_col_w}}"
+    for g in gene_names:
+        header += f" | {g:^{gene_col_w[g]}}"
+    header += f" | {'Total':^{total_col_w}}"
+    sep = "-" * len(header)
+
+    lines = ["", "Gene Presence/Absence Report", "=" * len(header), header, sep]
+
+    gene_totals = [0] * num_genes
+    for idx, taxon in enumerate(sorted_taxa):
+        row_str = f"{taxon:<{taxon_col_w}}"
+        count = 0
+        for i, g in enumerate(gene_names):
+            present = matrix[idx][i]
+            symbol = "+" if present else "-"
+            row_str += f" | {symbol:^{gene_col_w[g]}}"
+            if present:
+                count += 1
+                gene_totals[i] += 1
+        row_str += f" | {count}/{num_genes}".rjust(total_col_w + 3)
+        lines.append(row_str)
+
+    lines.append(sep)
+    summary = f"{'Present':<{taxon_col_w}}"
+    for i, g in enumerate(gene_names):
+        val = f"{gene_totals[i]}/{num_taxa}"
+        summary += f" | {val:^{gene_col_w[g]}}"
+    summary += f" |"
+    lines.extend([summary, ""])
+
+    table_text = "\n".join(lines)
+    logging.info(table_text)
+
+    report_path = os.path.join(output_dir, "gene_presence_report.txt")
+    with open(report_path, "w", encoding="utf-8") as f:
+        f.write(table_text + "\n")
+    logging.info(f"Gene presence report saved to: {report_path}")
+
+    # --- Heatmap ---
+    df = pd.DataFrame(matrix, index=sorted_taxa, columns=gene_names)
+
+    # Format taxon labels with italic species names (UID already embedded in taxon name)
+    formatted_labels = [_format_taxon_label(t) for t in sorted_taxa]
+
+    # Dynamic figure sizing
+    cell_w, cell_h = 0.5, 0.35
+    fig_w = max(8, num_genes * cell_w + 4)
+    fig_h = max(4, num_taxa * cell_h + 2)
+
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+
+    cmap = sns.color_palette(["#f26c41", "#4676b4"])
+    sns.heatmap(
+        df,
+        ax=ax,
+        cmap=cmap,
+        cbar=False,
+        linewidths=0.5,
+        linecolor="white",
+        square=True,
+        xticklabels=True,
+        yticklabels=formatted_labels,
+    )
+
+    ax.set_xlabel("Genes", fontsize=12, fontweight="bold")
+    ax.set_ylabel("")
+    ax.set_title("Gene Presence / Absence", fontsize=14, fontweight="bold", pad=15)
+    ax.xaxis.set_ticks_position("top")
+    ax.xaxis.set_label_position("top")
+    plt.xticks(rotation=45, ha="left", fontsize=9)
+    plt.yticks(fontsize=9)
+
+    # Legend
+    from matplotlib.patches import Patch
+    legend_elements = [
+        Patch(facecolor="#4676b4", edgecolor="white", label="Present"),
+        Patch(facecolor="#f26c41", edgecolor="white", label="Absent"),
+    ]
+    ax.legend(
+        handles=legend_elements,
+        loc="upper left",
+        bbox_to_anchor=(1.01, 1),
+        frameon=False,
+        fontsize=10,
+    )
+
+    plt.tight_layout()
+    heatmap_path = os.path.join(output_dir, "gene_presence_heatmap.png")
+    fig.savefig(heatmap_path, dpi=600, bbox_inches="tight")
+    plt.close(fig)
+    logging.info(f"Gene presence heatmap saved to: {heatmap_path}")
+
+def prepare_supermatrix(trimmed_files, output_dir, allow_missing=False, report_dir=None):
     """
     Concatenate trimmed alignments into a supermatrix (NEXUS format) with partition block.
 
@@ -61,6 +209,9 @@ def prepare_supermatrix(trimmed_files, output_dir, allow_missing=False):
     if not gene_data:
         logging.error("No valid data found to create supermatrix.")
         return None
+
+    # Report gene presence/absence matrix
+    _build_presence_report(all_taxa, gene_data, report_dir or output_dir)
 
     # 2. Filter genes based on allow_missing
     if not allow_missing:
@@ -135,15 +286,18 @@ def prepare_supermatrix(trimmed_files, output_dir, allow_missing=False):
         logging.error(f"Failed to create supermatrix: {e}")
         return None
 
-def run_iqtree_analysis(supermatrix_path, output_dir, threads=1):
+def run_iqtree_analysis(supermatrix_path, output_dir, threads=1, bootstrap=1000, model="MFP", extra_args=""):
     """
     Run IQ-TREE analysis on the supermatrix.
-    
+
     Args:
         supermatrix_path (str): Path to the supermatrix file.
         output_dir (str): Directory for output files.
         threads (int): Number of threads.
-        
+        bootstrap (int): Number of ultrafast bootstrap replicates.
+        model (str): Substitution model (e.g., "MFP" for ModelFinder).
+        extra_args (str): Additional IQ-TREE arguments.
+
     Returns:
         str: Path to the main tree file (.treefile) or None.
     """
@@ -164,11 +318,13 @@ def run_iqtree_analysis(supermatrix_path, output_dir, threads=1):
         iqtree_cmd,
         "-s", supermatrix_path,
         "-nt", str(threads),
-        "-B", "1000",
-        "-m", "MFP",
+        "-B", str(bootstrap),
+        "-m", model,
         "-pre", prefix,
         "-redo" # Overwrite existing
     ]
+    if extra_args and extra_args.strip():
+        cmd.extend(extra_args.strip().split())
     
     logging.info(f"Starting IQ-TREE analysis with {threads} threads...")
     logging.info(f"Command: {' '.join(cmd)}")
@@ -201,7 +357,7 @@ def run_iqtree_analysis(supermatrix_path, output_dir, threads=1):
         logging.error(f"Error executing IQ-TREE: {e}")
         return None
 
-def run_phylogeny_pipeline(trimmed_files, output_dir, threads=1, allow_missing=False):
+def run_phylogeny_pipeline(trimmed_files, output_dir, threads=1, allow_missing=False, bootstrap=1000, model="MFP", extra_args="", report_dir=None):
     """
     Orchestrate the phylogeny step: Supermatrix -> IQ-TREE
     """
@@ -213,11 +369,11 @@ def run_phylogeny_pipeline(trimmed_files, output_dir, threads=1, allow_missing=F
         os.makedirs(output_dir, exist_ok=True, mode=0o755)
 
     # Step 1: Supermatrix
-    supermatrix = prepare_supermatrix(trimmed_files, output_dir, allow_missing=allow_missing)
+    supermatrix = prepare_supermatrix(trimmed_files, output_dir, allow_missing=allow_missing, report_dir=report_dir)
     if not supermatrix:
         return None
-        
+
     # Step 2: IQ-TREE
-    tree_file = run_iqtree_analysis(supermatrix, output_dir, threads)
-    
+    tree_file = run_iqtree_analysis(supermatrix, output_dir, threads, bootstrap=bootstrap, model=model, extra_args=extra_args)
+
     return tree_file

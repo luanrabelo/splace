@@ -14,6 +14,9 @@ setup(
         "pandas",
         "openpyxl",
         "syngenes",
+        "pyyaml",
+        "seaborn",
+        "matplotlib",
         # 'mafft', 'trimal', 'iqtree' are binaries managed by conda, not pip
     ],
     python_requires=">=3.12",

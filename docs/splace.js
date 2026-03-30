@@ -271,9 +271,11 @@ function standardizeTrnaName(feat) {
     const trnMatch = raw.match(/^trn([A-Za-z])$/i);
     if (trnMatch) {
         const letter = trnMatch[1].toUpperCase();
-        const aaNames = { A:"Ala", R:"Arg", N:"Asn", D:"Asp", C:"Cys", E:"Glu", Q:"Gln",
-            G:"Gly", H:"His", I:"Ile", L:"Leu", K:"Lys", M:"Met", F:"Phe", P:"Pro",
-            S:"Ser", T:"Thr", W:"Trp", Y:"Tyr", V:"Val" };
+        const aaNames = {
+            A: "Ala", R: "Arg", N: "Asn", D: "Asp", C: "Cys", E: "Glu", Q: "Gln",
+            G: "Gly", H: "His", I: "Ile", L: "Leu", K: "Lys", M: "Met", F: "Phe", P: "Pro",
+            S: "Ser", T: "Thr", W: "Trp", Y: "Tyr", V: "Val"
+        };
         if (aaNames[letter]) return `tRNA-${aaNames[letter]}`;
         return `tRNA-${letter}`;
     }
@@ -637,6 +639,7 @@ function renderRecords() {
         section.classList.add("hidden");
         document.getElementById("featureTypesSection").classList.add("hidden");
         document.getElementById("genesSection").classList.add("hidden");
+        document.getElementById("heatmapSection").classList.add("hidden");
         document.getElementById("downloadSection").classList.add("hidden");
         return;
     }
@@ -966,16 +969,31 @@ function renderGenes(genesByType) {
                     const r = state.records[i];
                     const tax = extractTaxonomy(r);
                     const speciesName = `${tax.genus} ${tax.species}`.trim() || r.organism || "Unknown";
-                    const identifier = r.source === "ncbi" ? r.accession : (r.fileName || r.accession);
-                    missingRecords.push(`<em>${speciesName}</em> <span class="text-gray-400">(${identifier})</span>`);
+                    const accession = r.accession || 'N/A';
+                    const ncbiUrl = r.accession ? `https://www.ncbi.nlm.nih.gov/nuccore/${r.accession}` : null;
+                    const accHtml = ncbiUrl
+                        ? `<a href="${ncbiUrl}" target="_blank" rel="noopener" class="text-splace-blue-600 hover:underline">${accession}</a>`
+                        : `<span class="text-gray-400">${accession}</span>`;
+                    const fileName = r.fileName || '—';
+                    missingRecords.push({ speciesName, accHtml, fileName });
                 }
             }
 
             if (missingRecords.length > 0) {
+                let tableRows = missingRecords.map((rec, idx) => {
+                    const bg = idx % 2 === 0 ? 'bg-amber-50' : 'bg-white';
+                    return `<tr class="${bg}"><td class="px-3 py-1.5 text-sm italic">${rec.speciesName}</td><td class="px-3 py-1.5 text-sm">${rec.accHtml}</td><td class="px-3 py-1.5 text-sm text-gray-500">${rec.fileName}</td></tr>`;
+                }).join("");
                 warningItems.push(
-                    `<div class="flex items-start gap-2 text-sm">` +
-                    `<i class="fa-solid fa-triangle-exclamation text-amber-500 mt-0.5 flex-shrink-0"></i>` +
-                    `<div><strong>${geneName}</strong> — missing in ${missingRecords.length} record${missingRecords.length > 1 ? 's' : ''}: ${missingRecords.join(", ")}</div>` +
+                    `<div class="mb-3">` +
+                    `<div class="flex items-center gap-2 mb-1">` +
+                    `<i class="fa-solid fa-triangle-exclamation text-amber-500 flex-shrink-0"></i>` +
+                    `<span class="text-sm font-semibold text-amber-800">${geneName}</span>` +
+                    `<span class="text-xs text-amber-600">— missing in ${missingRecords.length} genome${missingRecords.length > 1 ? 's' : ''}</span>` +
+                    `</div>` +
+                    `<table class="w-full border border-amber-200 rounded-md overflow-hidden text-left">` +
+                    `<thead><tr class="bg-amber-100"><th class="px-3 py-1 text-xs font-semibold text-amber-800 uppercase">Species</th><th class="px-3 py-1 text-xs font-semibold text-amber-800 uppercase">Accession</th><th class="px-3 py-1 text-xs font-semibold text-amber-800 uppercase">File</th></tr></thead>` +
+                    `<tbody>${tableRows}</tbody></table>` +
                     `</div>`
                 );
             }
@@ -983,8 +1001,8 @@ function renderGenes(genesByType) {
 
         if (warningItems.length > 0) {
             warningsDiv.innerHTML =
-                `<div class="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">` +
-                `<div class="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-1"><i class="fa-solid fa-circle-exclamation mr-1"></i>Missing Genes</div>` +
+                `<div class="bg-amber-50 border border-amber-200 rounded-lg p-4">` +
+                `<div class="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-3"><i class="fa-solid fa-circle-exclamation mr-1"></i>Missing Genes</div>` +
                 warningItems.join("") +
                 `</div>`;
             warningsDiv.classList.remove("hidden");
@@ -993,6 +1011,195 @@ function renderGenes(genesByType) {
             warningsDiv.classList.add("hidden");
         }
     }
+
+    // Render heatmap
+    renderHeatmap();
+}
+
+// ========================================================================
+// Gene Presence Heatmap
+// ========================================================================
+function renderHeatmap() {
+    const section = document.getElementById("heatmapSection");
+    const container = document.getElementById("heatmapContainer");
+    if (!section || !container) return;
+
+    // Clean up previous hover label
+    if (container._hoverLabel) {
+        container._hoverLabel.remove();
+        container._hoverLabel = null;
+    }
+
+    const selectedGenes = [...state.selectedGenes].sort();
+    if (selectedGenes.length === 0 || state.records.length === 0) {
+        section.classList.add("hidden");
+        return;
+    }
+
+    // Build presence map: gene -> Set of record indices that have it
+    const presenceMap = new Map();
+    for (const gene of selectedGenes) {
+        presenceMap.set(gene, new Set());
+    }
+
+    const dataType = state.detectedDataType;
+    for (let ri = 0; ri < state.records.length; ri++) {
+        const record = state.records[ri];
+        const assignedTrnas = new Set();
+        for (const feat of record.features) {
+            if (!state.selectedFeatureTypes.has(feat.type)) continue;
+
+            let geneName = null;
+            if (feat.type === "tRNA") {
+                geneName = standardizeTrnaName(feat);
+                if (geneName && assignedTrnas.has(geneName)) {
+                    if (geneName === "tRNA-Ser1") geneName = "tRNA-Ser2";
+                    else if (geneName === "tRNA-Leu1") geneName = "tRNA-Leu2";
+                }
+                if (geneName) assignedTrnas.add(geneName);
+            } else {
+                const rawGene = feat.qualifiers.gene || null;
+                const rawProduct = feat.qualifiers.product || null;
+                if (!rawGene && !rawProduct) continue;
+                geneName = standardizeGeneName(rawGene, rawProduct, dataType);
+            }
+
+            if (geneName && presenceMap.has(geneName)) {
+                presenceMap.get(geneName).add(ri);
+            }
+        }
+    }
+
+    // Gene color by feature type
+    const geneTypeColor = {};
+    for (const gene of selectedGenes) {
+        geneTypeColor[gene] = "#323795"; // default blue
+    }
+
+    // Build table HTML
+    let html = '<table style="border-spacing:0;border-collapse:separate;width:100%;min-width:max-content;">';
+
+    // Header row with gene names (rotated) — sticky top + sticky col for corner
+    html += '<thead><tr class="heatmap-sticky-header"><td class="heatmap-sticky-col" style="min-width:160px;"></td>';
+    for (const gene of selectedGenes) {
+        const color = geneTypeColor[gene];
+        html += `<td class="px-0.5" style="vertical-align:bottom;text-align:center;">` +
+            `<div class="heatmap-gene-label" style="color:${color};">${gene}</div></td>`;
+    }
+    html += '</tr></thead><tbody>';
+
+    // Build sorted index array (alphabetical by species name)
+    const sortedRows = state.records.map((r, ri) => {
+        const tax = typeof extractTaxonomy === "function" ? extractTaxonomy(r) : {};
+        const speciesName = (tax.genus && tax.species)
+            ? `${tax.genus} ${tax.species}`
+            : (r.organism || r.accession || "Record " + (ri + 1));
+        return { ri, speciesName, r };
+    });
+    sortedRows.sort((a, b) => a.speciesName.localeCompare(b.speciesName));
+
+    // Data rows
+    for (const { ri, speciesName, r } of sortedRows) {
+        const ncbiUrl = r.accession ? `https://www.ncbi.nlm.nih.gov/nuccore/${r.accession}` : null;
+        const accessionHtml = ncbiUrl
+            ? `<a href="${ncbiUrl}" target="_blank" rel="noopener" class="text-splace-blue-600 hover:underline font-semibold">(${r.accession})</a>`
+            : `<strong>(${r.accession || 'N/A'})</strong>`;
+        html += '<tr>';
+        html += `<td class="heatmap-sticky-col pr-2 text-xs text-gray-600 whitespace-nowrap" style="min-width:160px;">` +
+            `<span class="italic">${speciesName}</span> ${accessionHtml}</td>`;
+
+        selectedGenes.forEach((gene, ci) => {
+            const present = presenceMap.get(gene).has(ri);
+            html += `<td class="px-0.5 py-0.5">` +
+                `<div class="heatmap-cell ${present ? 'present' : 'absent'}" data-row="${ri}" data-col="${ci}">` +
+                `</div></td>`;
+        });
+        html += '</tr>';
+    }
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+    section.classList.remove("hidden");
+
+    // Drag-to-scroll
+    let isDown = false, startX, startY, scrollLeft, scrollTop;
+    container.addEventListener('mousedown', e => {
+        isDown = true;
+        container.style.cursor = 'grabbing';
+        startX = e.pageX - container.offsetLeft;
+        startY = e.pageY - container.offsetTop;
+        scrollLeft = container.scrollLeft;
+        scrollTop = container.scrollTop;
+    });
+    container.addEventListener('mouseleave', () => { isDown = false; container.style.cursor = 'grab'; });
+    container.addEventListener('mouseup', () => { isDown = false; container.style.cursor = 'grab'; });
+    container.addEventListener('mousemove', e => {
+        if (!isDown) return;
+        e.preventDefault();
+        container.scrollLeft = scrollLeft - (e.pageX - container.offsetLeft - startX);
+        container.scrollTop = scrollTop - (e.pageY - container.offsetTop - startY);
+    });
+
+    // Crosshair hover: highlight row + column + floating label
+    const hoverLabel = document.createElement('div');
+    hoverLabel.className = 'heatmap-hover-label';
+    hoverLabel.style.display = 'none';
+    document.body.appendChild(hoverLabel);
+
+    // Map species names by row index for lookup
+    const speciesByRow = new Map();
+    for (const { ri, speciesName } of sortedRows) {
+        speciesByRow.set(String(ri), speciesName);
+    }
+
+    let highlightedCol = -1;
+    const table = container.querySelector('table');
+    const allBodyRows = () => table ? table.querySelectorAll('tbody tr') : [];
+
+    container.addEventListener('mouseover', e => {
+        const cell = e.target.closest('.heatmap-cell');
+        if (!cell) {
+            hoverLabel.style.display = 'none';
+            if (highlightedCol >= 0) {
+                allBodyRows().forEach(tr => { const tds = tr.querySelectorAll('td'); if (tds[highlightedCol + 1]) tds[highlightedCol + 1].style.background = ''; });
+                highlightedCol = -1;
+            }
+            return;
+        }
+        const row = cell.dataset.row;
+        const col = parseInt(cell.dataset.col, 10);
+        const species = speciesByRow.get(row) || '?';
+        const gene = selectedGenes[col] || '?';
+        hoverLabel.innerHTML = `<span class="italic">${species}</span> &mdash; <strong>${gene}</strong>`;
+        hoverLabel.style.display = 'block';
+
+        // Column highlight
+        if (col !== highlightedCol) {
+            if (highlightedCol >= 0) {
+                allBodyRows().forEach(tr => { const tds = tr.querySelectorAll('td'); if (tds[highlightedCol + 1]) tds[highlightedCol + 1].style.background = ''; });
+            }
+            highlightedCol = col;
+            allBodyRows().forEach(tr => { const tds = tr.querySelectorAll('td'); if (tds[col + 1]) tds[col + 1].style.background = 'rgba(70,118,180,0.08)'; });
+        }
+    });
+
+    container.addEventListener('mousemove', e => {
+        if (hoverLabel.style.display === 'block') {
+            hoverLabel.style.left = (e.clientX + 12) + 'px';
+            hoverLabel.style.top = (e.clientY - 28) + 'px';
+        }
+    });
+
+    container.addEventListener('mouseleave', () => {
+        hoverLabel.style.display = 'none';
+        if (highlightedCol >= 0) {
+            allBodyRows().forEach(tr => { const tds = tr.querySelectorAll('td'); if (tds[highlightedCol + 1]) tds[highlightedCol + 1].style.background = ''; });
+            highlightedCol = -1;
+        }
+    });
+
+    // Cleanup on re-render
+    container._hoverLabel = hoverLabel;
 }
 
 // ========================================================================
@@ -1032,6 +1239,22 @@ function selectAllGenes() {
 
 function selectNoneGenes() {
     state.selectedGenes.clear();
+    renderGenes();
+}
+
+function selectCompleteGenes() {
+    state.selectedGenes.clear();
+    document.querySelectorAll(".gene-chip").forEach(el => {
+        const name = el.dataset.gene;
+        if (!name) return;
+        const countText = el.querySelector('.gene-count');
+        if (countText) {
+            const parts = countText.textContent.split('/');
+            if (parts.length === 2 && parts[0].trim() === parts[1].trim()) {
+                state.selectedGenes.add(name);
+            }
+        }
+    });
     renderGenes();
 }
 
@@ -1769,6 +1992,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.getElementById("selectAllGenes").addEventListener("click", selectAllGenes);
     document.getElementById("selectNoneGenes").addEventListener("click", selectNoneGenes);
+    document.getElementById("selectCompleteGenes").addEventListener("click", selectCompleteGenes);
     document.getElementById("selectDefaultGenes").addEventListener("click", selectDefaultGenes);
     document.getElementById("downloadBtn").addEventListener("click", () => openHeaderBuilder());
 
