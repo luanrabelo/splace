@@ -268,6 +268,7 @@
             align-items: center;
             justify-content: flex-start;
             padding-top: 4px;
+            user-select: none;
         }
         .heatmap-sticky-col {
             position: sticky;
@@ -284,19 +285,7 @@
         .heatmap-sticky-header .heatmap-sticky-col {
             z-index: 3;
         }
-        /* Crosshair hover guides */
-        #heatmapContainer table {
-            position: relative;
-        }
-        #heatmapContainer tbody tr:hover > td {
-            background: rgba(70, 118, 180, 0.06);
-        }
-        #heatmapContainer tbody tr:hover > td.heatmap-sticky-col {
-            background: white;
-        }
-        .heatmap-col-highlight > td:nth-child(var(--col)) {
-            background: rgba(70, 118, 180, 0.06);
-        }
+        /* Crosshair hover label */
         .heatmap-hover-label {
             position: fixed;
             pointer-events: none;
@@ -308,6 +297,12 @@
             border-radius: 6px;
             white-space: nowrap;
             box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        .heatmap-cell, .heatmap-gene-label {
+            transition: opacity 0.3s ease;
+        }
+        .heatmap-sticky-col {
+            transition: color 0.3s ease;
         }
     </style>
 </head>
@@ -458,11 +453,12 @@
             </h3>
             <div class="flex items-center gap-4 text-xs">
                 <span class="flex items-center gap-1.5">
-                    <span class="inline-block w-3 h-3 rounded-sm" style="background:#323795;"></span> Present
+                    <span class="inline-block w-3 h-3 rounded-sm" style="background:#4676b4;"></span> Present
                 </span>
                 <span class="flex items-center gap-1.5">
-                    <span class="inline-block w-3 h-3 rounded-sm" style="background:#fde3e3;"></span> Absent
+                    <span class="inline-block w-3 h-3 rounded-sm" style="background:#f26c41;"></span> Absent
                 </span>
+                <span class="text-gray-400 ml-2"><i class="fa-solid fa-mouse-pointer mr-0.5"></i> Click a cell to highlight</span>
             </div>
         </div>
         <div id="heatmapContainer" class="overflow-x-auto overflow-y-auto max-h-96" style="cursor:grab;"></div>

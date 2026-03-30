@@ -1099,87 +1099,155 @@ function renderHeatmap() {
     sortedRows.sort((a, b) => a.speciesName.localeCompare(b.speciesName));
 
     // Data rows
-    for (const { ri, speciesName, r } of sortedRows) {
+    sortedRows.forEach(({ ri, speciesName, r }, ridx) => {
         const ncbiUrl = r.accession ? `https://www.ncbi.nlm.nih.gov/nuccore/${r.accession}` : null;
         const accessionHtml = ncbiUrl
             ? `<a href="${ncbiUrl}" target="_blank" rel="noopener" class="text-splace-blue-600 hover:underline font-semibold">(${r.accession})</a>`
             : `<strong>(${r.accession || 'N/A'})</strong>`;
-        html += '<tr>';
+        html += `<tr data-ridx="${ridx}">`;
         html += `<td class="heatmap-sticky-col pr-2 text-xs text-gray-600 whitespace-nowrap" style="min-width:160px;">` +
             `<span class="italic">${speciesName}</span> ${accessionHtml}</td>`;
 
         selectedGenes.forEach((gene, ci) => {
             const present = presenceMap.get(gene).has(ri);
             html += `<td class="px-0.5 py-0.5">` +
-                `<div class="heatmap-cell ${present ? 'present' : 'absent'}" data-row="${ri}" data-col="${ci}">` +
+                `<div class="heatmap-cell ${present ? 'present' : 'absent'}" data-ridx="${ridx}" data-col="${ci}">` +
                 `</div></td>`;
         });
         html += '</tr>';
-    }
+    });
 
     html += '</tbody></table>';
     container.innerHTML = html;
     section.classList.remove("hidden");
 
-    // Drag-to-scroll
-    let isDown = false, startX, startY, scrollLeft, scrollTop;
+    // Drag-to-scroll (only on heatmap cells, not species column)
+    let isDown = false, startX, startY, scrollLeft, scrollTop, didDrag = false;
     container.addEventListener('mousedown', e => {
+        // Only start drag from heatmap cells or gene headers, not species names or links
+        if (e.target.closest('.heatmap-sticky-col') || e.target.closest('a')) return;
         isDown = true;
+        didDrag = false;
         container.style.cursor = 'grabbing';
+        container.style.userSelect = 'none';
         startX = e.pageX - container.offsetLeft;
         startY = e.pageY - container.offsetTop;
         scrollLeft = container.scrollLeft;
         scrollTop = container.scrollTop;
     });
-    container.addEventListener('mouseleave', () => { isDown = false; container.style.cursor = 'grab'; });
-    container.addEventListener('mouseup', () => { isDown = false; container.style.cursor = 'grab'; });
+    container.addEventListener('mouseleave', () => { isDown = false; container.style.cursor = 'grab'; container.style.userSelect = ''; });
+    container.addEventListener('mouseup', () => { isDown = false; container.style.cursor = 'grab'; container.style.userSelect = ''; });
     container.addEventListener('mousemove', e => {
         if (!isDown) return;
         e.preventDefault();
+        didDrag = true;
         container.scrollLeft = scrollLeft - (e.pageX - container.offsetLeft - startX);
         container.scrollTop = scrollTop - (e.pageY - container.offsetTop - startY);
     });
 
-    // Crosshair hover: highlight row + column + floating label
+    // Crosshair: click to highlight, mouseleave clicked cell to reset
     const hoverLabel = document.createElement('div');
     hoverLabel.className = 'heatmap-hover-label';
     hoverLabel.style.display = 'none';
     document.body.appendChild(hoverLabel);
 
-    // Map species names by row index for lookup
-    const speciesByRow = new Map();
-    for (const { ri, speciesName } of sortedRows) {
-        speciesByRow.set(String(ri), speciesName);
-    }
-
-    let highlightedCol = -1;
+    const speciesNames = sortedRows.map(s => s.speciesName);
     const table = container.querySelector('table');
+    const allCells = () => table ? table.querySelectorAll('tbody .heatmap-cell') : [];
     const allBodyRows = () => table ? table.querySelectorAll('tbody tr') : [];
 
+    let crosshairActive = false;
+    let lockedRidx = -1;
+    let lockedCol = -1;
+    let lockedCell = null;
+
+    function activateCrosshair(ridx, col) {
+        crosshairActive = true;
+        // Dim all cells to 25%
+        allCells().forEach(c => { c.style.opacity = '0.25'; });
+        const rows = allBodyRows();
+        rows.forEach((tr, rowIdx) => {
+            const cells = tr.querySelectorAll('.heatmap-cell');
+            if (rowIdx === ridx) {
+                // Hovered row: only up to the selected column (inclusive)
+                cells.forEach((c, ci) => {
+                    c.style.opacity = ci <= col ? '1' : '0.25';
+                });
+            } else if (rowIdx < ridx) {
+                // Column cells ABOVE the hovered row at 100%
+                if (cells[col]) cells[col].style.opacity = '1';
+            }
+        });
+        // Header gene names
+        const hdrCells = table.querySelectorAll('thead .heatmap-gene-label');
+        hdrCells.forEach((lbl, i) => {
+            lbl.style.opacity = i === col ? '1' : '0.25';
+        });
+        // Species text + link
+        rows.forEach((tr, rowIdx) => {
+            const speciesTd = tr.querySelector('.heatmap-sticky-col');
+            if (speciesTd) {
+                const dimmed = rowIdx !== ridx;
+                speciesTd.style.color = dimmed ? 'rgba(107,114,128,0.25)' : '';
+                const link = speciesTd.querySelector('a');
+                if (link) link.style.color = dimmed ? 'rgba(107,114,128,0.25)' : '';
+            }
+        });
+    }
+
+    function resetCrosshair() {
+        crosshairActive = false;
+        lockedRidx = -1;
+        lockedCol = -1;
+        lockedCell = null;
+        allCells().forEach(c => { c.style.opacity = ''; });
+        const hdrCells = table.querySelectorAll('thead .heatmap-gene-label');
+        hdrCells.forEach(lbl => { lbl.style.opacity = ''; });
+        allBodyRows().forEach(tr => {
+            const speciesTd = tr.querySelector('.heatmap-sticky-col');
+            if (speciesTd) {
+                speciesTd.style.color = '';
+                const link = speciesTd.querySelector('a');
+                if (link) link.style.color = '';
+            }
+        });
+    }
+
+    // Click to activate crosshair (ignore if it was a drag)
+    container.addEventListener('click', e => {
+        if (didDrag) { didDrag = false; return; }
+        const cell = e.target.closest('.heatmap-cell');
+        if (!cell) return;
+        const ridx = parseInt(cell.dataset.ridx, 10);
+        const col = parseInt(cell.dataset.col, 10);
+        if (crosshairActive && lockedRidx === ridx && lockedCol === col) {
+            // Click same cell again: toggle off
+            resetCrosshair();
+        } else {
+            lockedRidx = ridx;
+            lockedCol = col;
+            lockedCell = cell;
+            activateCrosshair(ridx, col);
+        }
+    });
+
+    // When mouse leaves the clicked cell, reset
     container.addEventListener('mouseover', e => {
         const cell = e.target.closest('.heatmap-cell');
-        if (!cell) {
+        // Show floating label on any cell hover
+        if (cell) {
+            const ridx = parseInt(cell.dataset.ridx, 10);
+            const col = parseInt(cell.dataset.col, 10);
+            const species = speciesNames[ridx] || '?';
+            const gene = selectedGenes[col] || '?';
+            hoverLabel.innerHTML = `<span class="italic">${species}</span> &mdash; <strong>${gene}</strong>`;
+            hoverLabel.style.display = 'block';
+        } else {
             hoverLabel.style.display = 'none';
-            if (highlightedCol >= 0) {
-                allBodyRows().forEach(tr => { const tds = tr.querySelectorAll('td'); if (tds[highlightedCol + 1]) tds[highlightedCol + 1].style.background = ''; });
-                highlightedCol = -1;
-            }
-            return;
         }
-        const row = cell.dataset.row;
-        const col = parseInt(cell.dataset.col, 10);
-        const species = speciesByRow.get(row) || '?';
-        const gene = selectedGenes[col] || '?';
-        hoverLabel.innerHTML = `<span class="italic">${species}</span> &mdash; <strong>${gene}</strong>`;
-        hoverLabel.style.display = 'block';
-
-        // Column highlight
-        if (col !== highlightedCol) {
-            if (highlightedCol >= 0) {
-                allBodyRows().forEach(tr => { const tds = tr.querySelectorAll('td'); if (tds[highlightedCol + 1]) tds[highlightedCol + 1].style.background = ''; });
-            }
-            highlightedCol = col;
-            allBodyRows().forEach(tr => { const tds = tr.querySelectorAll('td'); if (tds[col + 1]) tds[col + 1].style.background = 'rgba(70,118,180,0.08)'; });
+        // If crosshair is active and mouse left the locked cell, reset
+        if (crosshairActive && lockedCell && cell !== lockedCell) {
+            resetCrosshair();
         }
     });
 
@@ -1192,10 +1260,7 @@ function renderHeatmap() {
 
     container.addEventListener('mouseleave', () => {
         hoverLabel.style.display = 'none';
-        if (highlightedCol >= 0) {
-            allBodyRows().forEach(tr => { const tds = tr.querySelectorAll('td'); if (tds[highlightedCol + 1]) tds[highlightedCol + 1].style.background = ''; });
-            highlightedCol = -1;
-        }
+        if (crosshairActive) resetCrosshair();
     });
 
     // Cleanup on re-render
