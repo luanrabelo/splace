@@ -1,0 +1,50 @@
+{
+  "name": "splace-desktop",
+  "version": "4.0.0",
+  "description": "SPLACE Desktop — SPlit, Align and ConcatenatE",
+  "main": "main.js",
+  "author": "Luan Rabelo and Renato Moreira-Oliveira",
+  "license": "GPL-3.0",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "build": {
+    "appId": "io.github.luanrabelo.splace",
+    "productName": "SPLACE",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "../docs/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "bin/",
+        "to": "bin/",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "../docs/assets/SPLACE.png"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "../docs/assets/SPLACE.png"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "../docs/assets/SPLACE.png"
+    }
+  }
+}

@@ -100,3 +100,4 @@ coverage/
 *.swp
 *~
 splace_app/
+electron/node_modules/

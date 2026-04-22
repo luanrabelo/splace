@@ -2,20 +2,20 @@
 // State
 // ========================================================================
 const state = {
-    records: [],       // Array of { accession, organism, features, sequence, source }
+    records: [],
     selectedGenes: new Set(),
-    selectedFeatureTypes: new Set(["CDS"]),
-    detectedDataType: "mt", // auto-detected: "mt" or "cp"
+    selectedFeatureTypes: new Set(),
+    detectedDataType: "mt",
     pendingRemoveIndex: null,
     pendingEditIndex: null,
-    headerTemplate: ["species", "accession"],
+    headerTemplate: ["accession", "family", "genus", "species"],
     hiddenColumns: new Set(["source", "accession", "kingdom", "phylum"]),
 };
 
 const MT_DEFAULT_GENES = ["COI", "COII", "COIII", "CYTB", "ND1", "ND2", "ND3", "ND4", "ND4L", "ND5", "ND6", "ATP6", "ATP8"];
 const CP_DEFAULT_GENES = ["rbcL", "matK", "ndhF", "atpB", "psaA", "psbA", "psbB", "psbC", "psbD", "psbE", "psbF", "psbH", "psbI", "psbJ", "psbK", "psbL", "psbM", "psbN", "psbT"];
 
-const EXAMPLE_ACCESSIONS = "NC_061537, NC_023122, DQ080041";
+const EXAMPLE_ACCESSIONS = "NC_024026.1, KJ184305.1, NC_024184.1, KJ556976.1, OP056886.1, PV818392.1, PX528615.1, NC_022707.1, KF356397.1, KJ642220.1, NC_057648.1, NC_082556.1, NC_023954.1";
 
 const FEATURE_TYPE_INFO = {
     CDS: "Protein-coding sequences (genes translated into proteins)",
@@ -547,7 +547,7 @@ async function fetchMultiple(accessions) {
     const statusEl = document.getElementById("fetchStatus");
     statusEl.classList.remove("hidden");
 
-    showProgress("Fetching from NCBI", `0 of ${accessions.length}`);
+    showProgress("Fetching data from NCBI", `0 of ${accessions.length}`);
 
     for (let i = 0; i < accessions.length; i++) {
         const acc = accessions[i].trim();
@@ -628,6 +628,47 @@ async function cachePut(accession, data, rawText) {
 }
 
 // ========================================================================
+// Step Badge System
+// ========================================================================
+
+function setBadge(id, status) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove("badge-required", "badge-optional", "badge-done");
+    el.classList.add("badge-" + status);
+}
+
+function updateStepBadges() {
+    const hasRecords = state.records.length > 0;
+    const hasGenes = state.selectedGenes.size > 0;
+
+    // Step 1: Load Data
+    setBadge("step1-badge", hasRecords ? "done" : "required");
+
+    // Step 2: Loaded Records (informational — green as soon as visible)
+    setBadge("step2-badge", "done");
+
+    // Step 3: Feature Types (optional — amber, user can keep defaults)
+    setBadge("step3-badge", "optional");
+
+    // Step 4: Select Markers
+    if (hasRecords) setBadge("step4-badge", hasGenes ? "done" : "required");
+
+    // Step 5: Heatmap — no badge (merged with step 4)
+
+    // Step 5 (was 6): Export / Align
+    if (window.isElectron) {
+        const headerConfirmed = !!document.getElementById("headerPreviewInline")?.textContent?.trim();
+        setBadge("step6-desktop-badge", headerConfirmed ? "done" : "required");
+        setBadge("step6a-badge", headerConfirmed ? "done" : "required");
+        setBadge("step6b-badge", "optional");
+        setBadge("step6c-badge", headerConfirmed ? "optional" : "required");
+    } else {
+        setBadge("step6-web-badge", "optional");
+    }
+}
+
+// ========================================================================
 // UI Rendering
 // ========================================================================
 function renderRecords() {
@@ -665,18 +706,18 @@ function renderRecords() {
 
         return `
             <tr class="group">
-                <td class="px-3 py-2 font-mono text-xs text-gray-600" data-col="accession">${r.accession}</td>
-                <td class="px-3 py-2 text-xs text-gray-500" data-col="kingdom">${tax.kingdom || "—"}</td>
-                <td class="px-3 py-2 text-xs text-gray-500" data-col="phylum">${tax.phylum || "—"}</td>
-                <td class="px-3 py-2 text-xs text-gray-500" data-col="class">${tax.class || "—"}</td>
-                <td class="px-3 py-2 text-xs text-gray-500" data-col="order">${tax.order || "—"}</td>
-                <td class="px-3 py-2 text-xs text-gray-500" data-col="family">${tax.family || "—"}</td>
-                <td class="px-3 py-2 text-xs text-gray-500" data-col="genus"><em>${tax.genus}</em></td>
-                <td class="px-3 py-2 text-xs text-gray-500" data-col="species"><em>${abbrevSpecies}</em></td>
-                <td class="px-3 py-2 text-xs text-gray-500" data-col="authorship">${tax.authorship || "—"}</td>
-                <td class="px-3 py-2 text-center text-xs text-gray-600" data-col="pcgs">${counts.pcgs}</td>
-                <td class="px-3 py-2 text-center text-xs text-gray-600" data-col="rrnas">${counts.rrnas}</td>
-                <td class="px-3 py-2 text-center text-xs text-gray-600" data-col="trnas">${counts.trnas}</td>
+                <td class="px-3 py-2 font-mono text-gray-600" data-col="accession">${r.accession}</td>
+                <td class="px-3 py-2 text-gray-500" data-col="kingdom">${tax.kingdom || "—"}</td>
+                <td class="px-3 py-2 text-gray-500" data-col="phylum">${tax.phylum || "—"}</td>
+                <td class="px-3 py-2 text-gray-500" data-col="class">${tax.class || "—"}</td>
+                <td class="px-3 py-2 text-gray-500" data-col="order">${tax.order || "—"}</td>
+                <td class="px-3 py-2 text-gray-500" data-col="family">${tax.family || "—"}</td>
+                <td class="px-3 py-2 text-gray-500" data-col="genus"><em>${tax.genus}</em></td>
+                <td class="px-3 py-2 text-gray-500" data-col="species"><em>${abbrevSpecies}</em></td>
+                <td class="px-3 py-2 text-gray-500" data-col="authorship">${tax.authorship || "—"}</td>
+                <td class="px-3 py-2 text-center text-gray-600" data-col="pcgs">${counts.pcgs}</td>
+                <td class="px-3 py-2 text-center text-gray-600" data-col="rrnas">${counts.rrnas}</td>
+                <td class="px-3 py-2 text-center text-gray-600" data-col="trnas">${counts.trnas}</td>
                 <td class="px-3 py-2 text-center" data-col="source"><span class="text-xs px-1.5 py-0.5 rounded ${sourceClass}">${sourceLabel}</span></td>
                 <td class="px-3 py-2 text-right whitespace-nowrap">
                     <button onclick="editRecord(${i})" class="text-gray-400 hover:text-splace-blue-600 transition-colors text-sm leading-none mr-2" data-tippy-content="Edit <em>${fullSpecies}</em> (${r.accession})"><i class="fa-solid fa-pen-to-square"></i></button>
@@ -686,8 +727,89 @@ function renderRecords() {
         `;
     }).join("");
 
-    renderGeneSelection();
+    // Only update gene selection if steps 3/4 are already visible (user already proceeded)
+    if (!document.getElementById("featureTypesSection").classList.contains("hidden")) {
+        renderGeneSelection();
+    }
     applyColumnVisibility();
+    updateStepBadges();
+    filterRecords();
+}
+
+function filterRecords() {
+    const input = document.getElementById("recordSearch");
+    const clearBtn = document.getElementById("recordSearchClear");
+    const q = (input?.value || "").toLowerCase().trim();
+
+    if (clearBtn) clearBtn.classList.toggle("hidden", !q);
+
+    const tbody = document.getElementById("recordsTableBody");
+    if (!tbody) return;
+
+    const rows = tbody.querySelectorAll("tr");
+    let visible = 0;
+    rows.forEach(row => {
+        if (row.id === "recordSearchNoResults") return;
+
+        // Save original cell HTML once per render cycle (cleared when tbody is replaced)
+        if (!row.dataset.originals) {
+            const cells = [...row.querySelectorAll("td")];
+            row.dataset.originals = JSON.stringify(cells.map(td => td.innerHTML));
+        }
+
+        // Always restore clean HTML before re-applying highlight
+        const originals = JSON.parse(row.dataset.originals);
+        row.querySelectorAll("td").forEach((td, i) => { td.innerHTML = originals[i]; });
+
+        const match = !q || row.textContent.toLowerCase().includes(q);
+        row.style.display = match ? "" : "none";
+
+        if (q && match) {
+            row.querySelectorAll("td").forEach(td => _highlightTextNodes(td, q));
+        }
+
+        if (match) visible++;
+    });
+
+    // No-results message
+    let noRow = document.getElementById("recordSearchNoResults");
+    if (!q || visible > 0) {
+        if (noRow) noRow.remove();
+    } else {
+        if (!noRow) {
+            noRow = document.createElement("tr");
+            noRow.id = "recordSearchNoResults";
+            noRow.innerHTML = `<td colspan="15" class="px-4 py-6 text-center text-gray-400 italic">No records match "<span class="text-gray-600 not-italic font-medium"></span>"</td>`;
+            tbody.appendChild(noRow);
+        }
+        noRow.querySelector("span").textContent = input.value;
+    }
+}
+
+// Walk text nodes inside el and wrap occurrences of query with a <mark>
+function _highlightTextNodes(el, query) {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+    const hits = [];
+    let node;
+    while ((node = walker.nextNode())) {
+        if (node.nodeValue.toLowerCase().includes(query)) hits.push(node);
+    }
+    hits.forEach(textNode => {
+        const text = textNode.nodeValue;
+        const lower = text.toLowerCase();
+        const frag = document.createDocumentFragment();
+        let last = 0, idx;
+        while ((idx = lower.indexOf(query, last)) !== -1) {
+            if (idx > last) frag.appendChild(document.createTextNode(text.slice(last, idx)));
+            const mark = document.createElement("mark");
+            mark.className = "bg-yellow-200 text-yellow-900 rounded-sm px-0.5";
+            mark.textContent = text.slice(idx, idx + query.length);
+            frag.appendChild(mark);
+            last = idx + query.length;
+        }
+        if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+        textNode.parentNode.replaceChild(frag, textNode);
+    });
 }
 
 function applyColumnVisibility() {
@@ -726,9 +848,21 @@ function toggleColumn(colKey, visible) {
 function renderGeneSelection() {
     if (state.records.length === 0) return;
 
+    // Step 3: Feature Types — always visible once user proceeds
     document.getElementById("featureTypesSection").classList.remove("hidden");
-    document.getElementById("genesSection").classList.remove("hidden");
-    document.getElementById("downloadSection").classList.remove("hidden");
+
+    // Step 4: Select Markers — only visible when at least one feature type is selected
+    const hasFeatureType = state.selectedFeatureTypes.size > 0;
+    document.getElementById("genesSection").classList.toggle("hidden", !hasFeatureType);
+
+    // Download / alignment section appear only once genes are selected
+    const hasGenes = state.selectedGenes.size > 0;
+    if (window.isElectron) {
+        document.getElementById("downloadSection").classList.add("hidden");
+        document.getElementById("nextStepSection").classList.toggle("hidden", !hasGenes);
+    } else {
+        document.getElementById("downloadSection").classList.toggle("hidden", !hasGenes);
+    }
 
     const dataType = state.detectedDataType;
 
@@ -772,10 +906,14 @@ function renderGeneSelection() {
                 seqLen = seq.length;
             } catch (e) { /* ignore */ }
 
-            const existing = geneMap.get(geneName) || { product: rawProduct, count: 0, recordIndices: new Set(), seqLengths: [] };
+            const existing = geneMap.get(geneName) || { product: rawProduct, count: 0, recordIndices: new Set(), seqLengths: [], recordLengths: new Map() };
             existing.count++;
             existing.recordIndices.add(ri);
-            if (seqLen > 0) existing.seqLengths.push(seqLen);
+            if (seqLen > 0) {
+                existing.seqLengths.push(seqLen);
+                if (!existing.recordLengths.has(ri)) existing.recordLengths.set(ri, []);
+                existing.recordLengths.get(ri).push(seqLen);
+            }
             geneMap.set(geneName, existing);
         }
     }
@@ -804,18 +942,7 @@ function renderGeneSelection() {
     renderGenes(genesByType);
 
     // Init Tippy on feature switches and record buttons
-    if (typeof tippy !== "undefined") {
-        // Destroy old tippy instances to avoid duplicates on re-render
-        document.querySelectorAll('[data-tippy-content]').forEach(el => {
-            if (el._tippy) el._tippy.destroy();
-        });
-        tippy('[data-tippy-content]', {
-            theme: 'splace',
-            placement: 'top',
-            arrow: true,
-            allowHTML: true,
-        });
-    }
+    window.initTooltips && window.initTooltips();
 }
 
 function renderGenes(genesByType) {
@@ -853,10 +980,14 @@ function renderGenes(genesByType) {
                     seqLen = seq.length;
                 } catch (e) { /* ignore */ }
 
-                const existing = geneMap.get(geneName) || { product: rawProduct, count: 0, recordIndices: new Set(), seqLengths: [] };
+                const existing = geneMap.get(geneName) || { product: rawProduct, count: 0, recordIndices: new Set(), seqLengths: [], recordLengths: new Map() };
                 existing.count++;
                 existing.recordIndices.add(ri);
-                if (seqLen > 0) existing.seqLengths.push(seqLen);
+                if (seqLen > 0) {
+                    existing.seqLengths.push(seqLen);
+                    if (!existing.recordLengths.has(ri)) existing.recordLengths.set(ri, []);
+                    existing.recordLengths.get(ri).push(seqLen);
+                }
                 geneMap.set(geneName, existing);
             }
         }
@@ -942,13 +1073,7 @@ function renderGenes(genesByType) {
 
             const el = document.querySelector(`.gene-chip[data-gene="${name}"]`);
             if (el) {
-                tippy(el, {
-                    content: tooltipHtml,
-                    allowHTML: true,
-                    theme: 'splace',
-                    placement: 'top',
-                    arrow: true,
-                });
+                window.createTippy(el, tooltipHtml);
             }
         });
     }
@@ -1012,6 +1137,85 @@ function renderGenes(genesByType) {
         }
     }
 
+    // Render duplicate gene warnings for PCGs and rRNAs
+    const dupWarningsDiv = document.getElementById("geneDuplicateWarnings");
+    if (dupWarningsDiv && genesByType) {
+        const dupItems = [];
+        const dupFeatureTypes = ["CDS", "rRNA"];
+        const typeLabels = { CDS: "PCG", rRNA: "rRNA" };
+
+        for (const ftype of dupFeatureTypes) {
+            const fMap = genesByType.get(ftype);
+            if (!fMap) continue;
+
+            for (const [geneName, info] of fMap) {
+                if (!state.selectedGenes.has(geneName)) continue;
+                if (!info.recordLengths) continue;
+
+                const dupRecords = [];
+                for (const [ri, lengths] of info.recordLengths) {
+                    if (lengths.length < 2) continue;
+                    const r = state.records[ri];
+                    const tax = extractTaxonomy(r);
+                    const speciesName = `${tax.genus} ${tax.species}`.trim() || r.organism || "Unknown";
+                    const ncbiUrl = r.accession ? `https://www.ncbi.nlm.nih.gov/nuccore/${r.accession}` : null;
+                    const accHtml = ncbiUrl
+                        ? `<a href="${ncbiUrl}" target="_blank" rel="noopener" class="text-splace-blue-600 hover:underline">${r.accession}</a>`
+                        : `<span class="text-gray-400">${r.accession || 'N/A'}</span>`;
+                    const maxLen = Math.max(...lengths);
+                    const lensList = lengths.map(l => `${l.toLocaleString()} bp`).join(", ");
+                    dupRecords.push({ speciesName, accHtml, maxLen, lensList });
+                }
+
+                if (dupRecords.length === 0) continue;
+
+                const typeLabel = typeLabels[ftype] || ftype;
+                const tableRows = dupRecords.map((rec, idx) => {
+                    const bg = idx % 2 === 0 ? "bg-orange-50" : "bg-white";
+                    return `<tr class="${bg}">` +
+                        `<td class="px-3 py-1.5 text-sm italic">${rec.speciesName}</td>` +
+                        `<td class="px-3 py-1.5 text-sm">${rec.accHtml}</td>` +
+                        `<td class="px-3 py-1.5 text-sm text-gray-600">${rec.lensList}</td>` +
+                        `<td class="px-3 py-1.5 text-sm"><span class="font-semibold text-splace-blue-700">${rec.maxLen.toLocaleString()} bp</span>` +
+                        ` <span class="text-gray-400">(longest — will be used)</span></td>` +
+                        `</tr>`;
+                }).join("");
+
+                dupItems.push(
+                    `<div class="mb-3">` +
+                    `<div class="flex items-center gap-2 mb-1.5">` +
+                    `<i class="fa-solid fa-copy text-orange-500 flex-shrink-0"></i>` +
+                    `<span class="font-semibold text-orange-800">${geneName}</span>` +
+                    `<span class="text-xs font-semibold text-orange-500 uppercase tracking-wide">${typeLabel}</span>` +
+                    `<span class="text-sm text-orange-600">— duplicated in ${dupRecords.length} genome${dupRecords.length > 1 ? "s" : ""}</span>` +
+                    `</div>` +
+                    `<table class="w-full border border-orange-200 rounded-md overflow-hidden text-left">` +
+                    `<thead><tr class="bg-orange-100">` +
+                    `<th class="px-3 py-1 text-xs font-semibold text-orange-800 uppercase tracking-wide">Species</th>` +
+                    `<th class="px-3 py-1 text-xs font-semibold text-orange-800 uppercase tracking-wide">Accession</th>` +
+                    `<th class="px-3 py-1 text-xs font-semibold text-orange-800 uppercase tracking-wide">Copies (sizes)</th>` +
+                    `<th class="px-3 py-1 text-xs font-semibold text-orange-800 uppercase tracking-wide">Used</th>` +
+                    `</tr></thead>` +
+                    `<tbody>${tableRows}</tbody></table>` +
+                    `</div>`
+                );
+            }
+        }
+
+        if (dupItems.length > 0) {
+            dupWarningsDiv.innerHTML =
+                `<div class="bg-orange-50 border border-orange-200 rounded-lg p-4">` +
+                `<div class="font-semibold text-orange-700 uppercase tracking-wider mb-3 text-sm">` +
+                `<i class="fa-solid fa-copy mr-1"></i>Duplicate Genes</div>` +
+                dupItems.join("") +
+                `</div>`;
+            dupWarningsDiv.classList.remove("hidden");
+        } else {
+            dupWarningsDiv.innerHTML = "";
+            dupWarningsDiv.classList.add("hidden");
+        }
+    }
+
     // Render heatmap
     renderHeatmap();
 }
@@ -1024,15 +1228,10 @@ function renderHeatmap() {
     const container = document.getElementById("heatmapContainer");
     if (!section || !container) return;
 
-    // Clean up previous hover label
-    if (container._hoverLabel) {
-        container._hoverLabel.remove();
-        container._hoverLabel = null;
-    }
-
     const selectedGenes = [...state.selectedGenes].sort();
     if (selectedGenes.length === 0 || state.records.length === 0) {
         section.classList.add("hidden");
+        updateStepBadges();
         return;
     }
 
@@ -1105,7 +1304,7 @@ function renderHeatmap() {
             ? `<a href="${ncbiUrl}" target="_blank" rel="noopener" class="text-splace-blue-600 hover:underline font-semibold">(${r.accession})</a>`
             : `<strong>(${r.accession || 'N/A'})</strong>`;
         html += `<tr data-ridx="${ridx}">`;
-        html += `<td class="heatmap-sticky-col pr-2 text-xs text-gray-600 whitespace-nowrap" style="min-width:160px;">` +
+        html += `<td class="heatmap-sticky-col pr-2 text-gray-600 whitespace-nowrap" style="min-width:160px;">` +
             `<span class="italic">${speciesName}</span> ${accessionHtml}</td>`;
 
         selectedGenes.forEach((gene, ci) => {
@@ -1146,12 +1345,6 @@ function renderHeatmap() {
     });
 
     // Crosshair: click to highlight, mouseleave clicked cell to reset
-    const hoverLabel = document.createElement('div');
-    hoverLabel.className = 'heatmap-hover-label';
-    hoverLabel.style.display = 'none';
-    document.body.appendChild(hoverLabel);
-
-    const speciesNames = sortedRows.map(s => s.speciesName);
     const table = container.querySelector('table');
     const allCells = () => table ? table.querySelectorAll('tbody .heatmap-cell') : [];
     const allBodyRows = () => table ? table.querySelectorAll('tbody tr') : [];
@@ -1234,37 +1427,17 @@ function renderHeatmap() {
     // When mouse leaves the clicked cell, reset
     container.addEventListener('mouseover', e => {
         const cell = e.target.closest('.heatmap-cell');
-        // Show floating label on any cell hover
-        if (cell) {
-            const ridx = parseInt(cell.dataset.ridx, 10);
-            const col = parseInt(cell.dataset.col, 10);
-            const species = speciesNames[ridx] || '?';
-            const gene = selectedGenes[col] || '?';
-            hoverLabel.innerHTML = `<span class="italic">${species}</span> &mdash; <strong>${gene}</strong>`;
-            hoverLabel.style.display = 'block';
-        } else {
-            hoverLabel.style.display = 'none';
-        }
         // If crosshair is active and mouse left the locked cell, reset
         if (crosshairActive && lockedCell && cell !== lockedCell) {
             resetCrosshair();
         }
     });
 
-    container.addEventListener('mousemove', e => {
-        if (hoverLabel.style.display === 'block') {
-            hoverLabel.style.left = (e.clientX + 12) + 'px';
-            hoverLabel.style.top = (e.clientY - 28) + 'px';
-        }
-    });
-
     container.addEventListener('mouseleave', () => {
-        hoverLabel.style.display = 'none';
         if (crosshairActive) resetCrosshair();
     });
 
-    // Cleanup on re-render
-    container._hoverLabel = hoverLabel;
+    updateStepBadges();
 }
 
 // ========================================================================
@@ -1280,6 +1453,8 @@ function toggleGene(name, checked) {
     if (checked) state.selectedGenes.add(name);
     else state.selectedGenes.delete(name);
     renderGenes();
+    renderGeneSelection(); // updates download/alignment section visibility + heatmap
+    updateStepBadges();
 }
 
 window.removeRecord = function (index) {
@@ -1300,11 +1475,15 @@ function selectAllGenes() {
         if (name) state.selectedGenes.add(name);
     });
     renderGenes();
+    renderGeneSelection();
+    updateStepBadges();
 }
 
 function selectNoneGenes() {
     state.selectedGenes.clear();
     renderGenes();
+    renderGeneSelection();
+    updateStepBadges();
 }
 
 function selectCompleteGenes() {
@@ -1321,6 +1500,8 @@ function selectCompleteGenes() {
         }
     });
     renderGenes();
+    renderGeneSelection();
+    updateStepBadges();
 }
 
 function selectDefaultGenes() {
@@ -1332,17 +1513,33 @@ function selectDefaultGenes() {
     const defaults = state.detectedDataType === "mt" ? MT_DEFAULT_GENES : CP_DEFAULT_GENES;
     defaults.forEach(g => state.selectedGenes.add(g));
     renderGeneSelection();
+    updateStepBadges();
+}
+
+function proceedToAnalysis() {
+    renderGeneSelection();
+    document.getElementById("featureTypesSection").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function fillExampleAccessions() {
     document.getElementById("accessionInput").value = EXAMPLE_ACCESSIONS;
+    validateAccessionInput();
+}
+
+// NCBI accession numbers: 1-6 letters (optional underscore) then 5+ digits, optionally .version
+const ACCESSION_RE = /\b[A-Za-z]{1,6}_?\d{4,}(?:\.\d+)?\b/;
+
+function validateAccessionInput() {
+    const raw = document.getElementById("accessionInput").value;
+    const btn = document.getElementById("fetchBtn");
+    btn.disabled = !ACCESSION_RE.test(raw);
 }
 
 // ========================================================================
 // Progress Modal
 // ========================================================================
 function showProgress(title, subtitle) {
-    document.getElementById("progressTitle").textContent = title;
+    document.getElementById("progressTitle").innerHTML = title;
     document.getElementById("progressSubtitle").textContent = subtitle || "";
     document.getElementById("progressBar").style.width = "0%";
     document.getElementById("progressDetail").textContent = "";
@@ -1411,7 +1608,7 @@ async function fetchAllTaxonomy() {
     const totalUnique = uniqueSpecies.length;
     const totalRecords = state.records.length;
 
-    showProgress("Fetching Taxonomy from GBIF", `0 of ${totalUnique} species`);
+    showProgress("Fetching Taxonomy from GBIF with<br><b>dataFishing (Rabelo et al. 2025)</b>", `0 of ${totalUnique} species`);
     document.getElementById("progressDetail").textContent = "dataFishing (Rabelo et al. 2025)";
 
     let successCount = 0;
@@ -1464,6 +1661,7 @@ async function fetchAllTaxonomy() {
     hideProgress(`Taxonomy fetched: ${successCount} species OK${errorCount > 0 ? `, ${errorCount} failed` : ""}${totalUnique < totalRecords ? ` (${totalUnique} unique queries for ${totalRecords} records)` : ""}`);
     btn.disabled = false;
     renderRecords();
+    renderGeneSelection(); // reveal steps 3 & 4 now that taxonomy is done
 }
 
 // ========================================================================
@@ -1685,6 +1883,24 @@ function openHeaderBuilder() {
     document.getElementById("headerModal").classList.remove("hidden");
 }
 
+// Update the inline header preview shown in the "Next Step" section
+function updateHeaderPreviewInline() {
+    const el = document.getElementById("headerPreviewInline");
+    if (!el) return;
+    const preview = document.getElementById("headerPreview");
+    if (preview) {
+        el.textContent = preview.textContent || preview.innerText;
+        el.classList.remove("hidden");
+    }
+}
+
+// Enable the Run Alignment button once the header has been confirmed
+function enableRunButton() {
+    const btn = document.getElementById("runAlignmentBtn");
+    if (!btn) return;
+    btn.disabled = false;
+}
+
 // ========================================================================
 // FASTA Generation
 // ========================================================================
@@ -1901,6 +2117,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.getElementById("exampleBtn").addEventListener("click", fillExampleAccessions);
 
+    document.getElementById("accessionInput").addEventListener("input", validateAccessionInput);
+
     document.getElementById("fetchBtn").addEventListener("click", async () => {
         const raw = document.getElementById("accessionInput").value;
         const accessions = raw.split(/[\s,;\n]+/).filter(a => a.trim());
@@ -1918,6 +2136,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         btn.disabled = false;
         btn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Fetch';
+        validateAccessionInput();
     });
 
     document.getElementById("clearRecords").addEventListener("click", () => {
@@ -2087,6 +2306,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.getElementById("headerModalConfirm").addEventListener("click", () => {
         document.getElementById("headerModal").classList.add("hidden");
+        if (window.isElectron) {
+            updateHeaderPreviewInline();
+            document.getElementById("panel6b").classList.remove("hidden");
+            document.getElementById("panel6c").classList.remove("hidden");
+            enableRunButton();
+            updateStepBadges();
+            return;
+        }
         const format = document.querySelector('input[name="downloadFormat"]:checked').value;
         if (format === "individual") {
             downloadIndividualFasta();
@@ -2101,12 +2328,1045 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     // Initialize Tippy on static elements
-    if (typeof tippy !== "undefined") {
-        tippy('[data-tippy-content]', {
-            theme: 'splace',
-            placement: 'top',
-            arrow: true,
-            allowHTML: true,
+    window.initTooltips && window.initTooltips();
+
+    // ----------------------------------------------------------------
+    // Electron desktop mode
+    // ----------------------------------------------------------------
+    if (window.isElectron) {
+
+        // In header modal: rename "Download" → "Confirm Header", hide format selector
+        const headerModalConfirmBtn = document.getElementById("headerModalConfirm");
+        headerModalConfirmBtn.innerHTML = '<i class="fa-solid fa-check mr-1"></i> Confirm Header';
+        const dlFormatDiv = headerModalConfirmBtn.closest('.flex')?.previousElementSibling;
+        if (dlFormatDiv && dlFormatDiv.querySelector('input[name="downloadFormat"]')) {
+            dlFormatDiv.classList.add("hidden");
+        }
+
+        // Open header builder
+        document.getElementById("openHeaderBuilderBtn").addEventListener("click", openHeaderBuilder);
+
+        // Ask main process for CPU count; set default threads to all CPUs
+        window.electronAPI.getCpuCount().then(cpus => {
+            const threads = cpus;
+            document.getElementById("mafftThreads").value = threads;
+            const concurrent = Math.max(1, Math.floor(cpus / threads));
+            document.getElementById("mafftConcurrencyInfo").textContent =
+                `${cpus} logical CPUs — using ${threads} threads (${concurrent} job${concurrent !== 1 ? 's' : ''} in parallel)`;
+        });
+        document.getElementById("mafftThreads").addEventListener("input", () => {
+            window.electronAPI.getCpuCount().then(cpus => {
+                const threads = Math.max(1, parseInt(document.getElementById("mafftThreads").value) || 1);
+                const concurrent = Math.max(1, Math.floor(cpus / threads));
+                document.getElementById("mafftConcurrencyInfo").textContent =
+                    `${cpus} logical CPUs — ${concurrent} job${concurrent !== 1 ? 's' : ''} × ${threads} thread${threads !== 1 ? 's' : ''}`;
+            });
+        });
+
+        // trimAl mode toggle
+        window.toggleTrimalManual = function (val) {
+            document.getElementById("trimalManualFields").classList.toggle("hidden", val !== "manual");
+        };
+
+        // trimAl prompt buttons
+        document.getElementById("trimalNoBtn").addEventListener("click", () => {
+            document.getElementById("trimalPromptCard").classList.add("hidden");
+            document.getElementById("alignmentResults").classList.remove("hidden");
+            document.getElementById("showTrimalBtn").classList.remove("hidden");
+            document.getElementById("alignmentResultsAccordion").scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+        document.getElementById("trimalYesBtn").addEventListener("click", () => {
+            document.getElementById("trimalPromptCard").classList.add("hidden");
+            document.getElementById("panel6d").classList.remove("hidden");
+            document.getElementById("panel6d").scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+        document.getElementById("showTrimalBtn").addEventListener("click", () => {
+            document.getElementById("showTrimalBtn").classList.add("hidden");
+            document.getElementById("panel6d").classList.remove("hidden");
+            document.getElementById("panel6d").scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+
+        // Run trimAl
+        document.getElementById("runTrimalBtn").addEventListener("click", () => {
+            if (state.selectedGenes.size === 0) return;
+            const mode = document.getElementById("trimalMode").value;
+            const extra = document.getElementById("trimalExtra").value.trim();
+            const params = [];
+            if (mode === "manual") {
+                const gt = document.getElementById("trimalGt").value;
+                const st = document.getElementById("trimalSt").value;
+                const cons = document.getElementById("trimalCons").value;
+                const w = document.getElementById("trimalW").value;
+                if (gt) params.push("-gt", gt);
+                if (st) params.push("-st", st);
+                if (cons) params.push("-cons", cons);
+                if (w) params.push("-w", w);
+            } else {
+                params.push(mode);
+            }
+            if (extra) params.push(...extra.split(/\s+/).filter(Boolean));
+
+            const markers = [...state.selectedGenes];
+            openAnalysisModal("trimAl", markers);
+            window.electronAPI.runTrimal({ markers, params });
+        });
+
+        // Analysis progress events
+        window.electronAPI.onAnalysisProgress((data) => {
+            updateAnalysisModal(data);
+        });
+
+        window.electronAPI.onAnalysisDone((result) => {
+            finalizeAnalysisModal(result);
+        });
+
+        // Close modal
+        document.getElementById("analysisModalClose").addEventListener("click", () => {
+            document.getElementById("analysisModal").classList.add("hidden");
+        });
+
+        // Run alignment button
+        document.getElementById("runAlignmentBtn").addEventListener("click", () => {
+            if (state.selectedGenes.size === 0) { alert("No markers selected."); return; }
+            const fastaFiles = generateFastaFiles();
+            if (fastaFiles.size === 0) { alert("No sequences to align. Check records and gene selection."); return; }
+
+            const method = document.getElementById("mafftMethod").value;
+            const threads = parseInt(document.getElementById("mafftThreads").value) || 4;
+            const maxIterate = parseInt(document.getElementById("mafftMaxIterate").value) || 0;
+            const op = parseFloat(document.getElementById("mafftOp").value);
+            const ep = parseFloat(document.getElementById("mafftEp").value);
+            const adjustDir = document.getElementById("mafftAdjustDir").checked;
+            const reorder = document.getElementById("mafftReorder").checked;
+            const preserveCase = document.getElementById("mafftPreserveCase").checked;
+            const extra = document.getElementById("mafftExtra").value.trim();
+
+            const params = [...method.split(/\s+/).filter(Boolean)];
+            if (maxIterate > 0) params.push("--maxiterate", String(maxIterate));
+            if (!isNaN(op)) params.push("--op", String(op));
+            if (!isNaN(ep)) params.push("--ep", String(ep));
+            if (adjustDir) params.push("--adjustdirection");
+            if (reorder) params.push("--reorder");
+            if (preserveCase) params.push("--preservecase");
+            if (extra) params.push(...extra.split(/\s+/).filter(Boolean));
+
+            const files = {};
+            for (const [name, content] of fastaFiles) files[name] = content;
+
+            const markers = Object.keys(files);
+            openAnalysisModal("mafft", markers);
+            window.electronAPI.runAnalysis({ files, params, threads });
         });
     }
 });
+
+// ========================================================================
+// Electron: Analysis Modal Helpers
+// ========================================================================
+
+let _analysisMarkers = [];
+
+function openAnalysisModal(phase, markers) {
+    _analysisMarkers = markers;
+    const modal = document.getElementById("analysisModal");
+    const icon = document.getElementById("analysisModalIcon");
+    const title = document.getElementById("analysisModalTitle");
+    const sub = document.getElementById("analysisModalSubtitle");
+    const bar = document.getElementById("analysisModalProgressBar");
+    const lbl = document.getElementById("analysisModalProgressLabel");
+    const pct = document.getElementById("analysisModalProgressPct");
+    const log = document.getElementById("analysisModalLog");
+    const list = document.getElementById("analysisModalMarkerList");
+    const close = document.getElementById("analysisModalClose");
+
+    icon.className = "fa-solid fa-spinner fa-spin text-splace-blue-600 text-lg";
+    title.textContent = phase === "mafft" ? "Running MAFFT Alignment…" : "Running trimAl…";
+    sub.textContent = `${markers.length} marker${markers.length !== 1 ? 's' : ''} queued`;
+    bar.style.width = "0%";
+    lbl.textContent = `0 / ${markers.length} markers`;
+    pct.textContent = "0%";
+    log.textContent = "";
+    close.classList.add("hidden");
+
+    list.innerHTML = markers.map(m =>
+        `<div id="modal-marker-${CSS.escape(m)}" class="flex items-center gap-2 px-2 py-1 rounded text-xs text-gray-600">
+            <i class="fa-solid fa-clock text-gray-300 w-3"></i>
+            <span class="font-mono">${m}</span>
+        </div>`
+    ).join("");
+
+    modal.classList.remove("hidden");
+}
+
+function updateAnalysisModal(data) {
+    const log = document.getElementById("analysisModalLog");
+    const bar = document.getElementById("analysisModalProgressBar");
+    const lbl = document.getElementById("analysisModalProgressLabel");
+    const pct = document.getElementById("analysisModalProgressPct");
+    const sub = document.getElementById("analysisModalSubtitle");
+
+    if (data.message) {
+        log.textContent += data.message + "\n";
+        log.scrollTop = log.scrollHeight;
+    }
+
+    if (data.total > 0) {
+        const p = Math.round((data.done / data.total) * 100);
+        bar.style.width = p + "%";
+        lbl.textContent = `${data.done} / ${data.total} markers`;
+        pct.textContent = p + "%";
+    }
+
+    // Update individual marker row
+    if (data.marker) {
+        const row = document.getElementById("modal-marker-" + CSS.escape(data.marker));
+        if (row) {
+            const icon = row.querySelector("i");
+            if (data.status === "running") {
+                icon.className = "fa-solid fa-spinner fa-spin text-splace-blue-500 w-3";
+            } else if (data.status === "done") {
+                icon.className = "fa-solid fa-check text-green-500 w-3";
+                if (data.info) {
+                    const span = row.querySelector("span");
+                    span.innerHTML += ` <span class="text-gray-400">${data.info}</span>`;
+                }
+            } else if (data.status === "error") {
+                icon.className = "fa-solid fa-xmark text-red-500 w-3";
+            }
+        }
+    }
+
+    if (data.phase) {
+        sub.textContent = data.phase;
+    }
+}
+
+function finalizeAnalysisModal(result) {
+    const icon = document.getElementById("analysisModalIcon");
+    const title = document.getElementById("analysisModalTitle");
+    const close = document.getElementById("analysisModalClose");
+    const bar = document.getElementById("analysisModalProgressBar");
+    const lbl = document.getElementById("analysisModalProgressLabel");
+    const pct = document.getElementById("analysisModalProgressPct");
+
+    bar.style.width = "100%";
+    lbl.textContent = `${result.aligned} / ${result.total} markers`;
+    pct.textContent = "100%";
+
+    if (result.phase === "mafft") {
+        icon.className = "fa-solid fa-check text-green-600 text-lg";
+        title.textContent = `Alignment complete — ${result.aligned}/${result.total} markers aligned`;
+        close.classList.remove("hidden");
+        // After modal is closed, show trimAl prompt and partial results
+        close.onclick = () => {
+            document.getElementById("analysisModal").classList.add("hidden");
+            if (result.markerResults) {
+                window._alignmentOutputDir = result.outputDir;
+                renderAlignmentResults(result.markerResults, false);
+                renderConcatSection(result.markerResults, false);
+            }
+            document.getElementById("trimalPromptCard").classList.remove("hidden");
+            document.getElementById("trimalPromptCard").scrollIntoView({ behavior: "smooth", block: "start" });
+            setBadge("step6c-badge", "done");
+            updateStepBadges();
+        };
+    } else if (result.phase === "trimal") {
+        icon.className = "fa-solid fa-check text-green-600 text-lg";
+        title.textContent = `Trimming complete — ${result.aligned}/${result.total} markers trimmed`;
+        close.classList.remove("hidden");
+        close.onclick = () => {
+            document.getElementById("analysisModal").classList.add("hidden");
+            if (result.markerResults) {
+                renderAlignmentResults(result.markerResults, true);
+                renderConcatSection(result.markerResults, true);
+            }
+            document.getElementById("alignmentResults").classList.remove("hidden");
+            document.getElementById("alignmentResults").scrollIntoView({ behavior: "smooth", block: "start" });
+            setBadge("step6d-badge", "done");
+            updateStepBadges();
+        };
+    }
+}
+
+// ========================================================================
+// Electron: Alignment Visualization
+// ========================================================================
+
+function parseFasta(text) {
+    const seqs = [];
+    let cur = null;
+    for (const line of text.split(/\r?\n/)) {
+        if (line.startsWith(">")) {
+            if (cur) seqs.push(cur);
+            cur = { name: line.slice(1).trim(), seq: "" };
+        } else if (cur) {
+            cur.seq += line.trim();
+        }
+    }
+    if (cur) seqs.push(cur);
+    return seqs;
+}
+
+const NT_COLORS = { A: "#1AC253", T: "#E11218", U: "#E11218", G: "#ECA918", C: "#4272EE", "-": "#d1d5db" };
+
+function hexToRgb(hex) {
+    return {
+        r: parseInt(hex.slice(1, 3), 16),
+        g: parseInt(hex.slice(3, 5), 16),
+        b: parseInt(hex.slice(5, 7), 16)
+    };
+}
+
+function renderAlignmentCanvas(canvas, sequences) {
+    if (!sequences || sequences.length === 0) return;
+    const nSeq = sequences.length;
+    const seqLen = sequences[0].seq.length || 1;
+
+    const container = canvas.parentElement;
+    const W = Math.min(seqLen, container ? container.clientWidth || 560 : 560);
+    const cellH = Math.max(2, Math.min(8, Math.floor(160 / nSeq)));
+    const H = nSeq * cellH;
+
+    canvas.width = W;
+    canvas.height = H;
+    canvas.style.width = "100%";
+    canvas.style.height = H + "px";
+    canvas.style.imageRendering = "pixelated";
+
+    const ctx = canvas.getContext("2d");
+    const img = ctx.createImageData(W, H);
+    const data = img.data;
+
+    const colorCache = {};
+    const getColor = (ch) => {
+        if (!colorCache[ch]) colorCache[ch] = hexToRgb(NT_COLORS[ch] || "#9ca3af");
+        return colorCache[ch];
+    };
+
+    for (let si = 0; si < nSeq; si++) {
+        const seq = sequences[si].seq.toUpperCase();
+        const rowY = si * cellH;
+        for (let px = 0; px < W; px++) {
+            const pi = Math.floor(px * seqLen / W);
+            const c = getColor(seq[pi] || "");
+            for (let dy = 0; dy < cellH; dy++) {
+                const idx = ((rowY + dy) * W + px) * 4;
+                data[idx] = c.r;
+                data[idx + 1] = c.g;
+                data[idx + 2] = c.b;
+                data[idx + 3] = 255;
+            }
+        }
+    }
+    ctx.putImageData(img, 0, 0);
+}
+
+// Enhanced alignment viewer: ruler + colored sequences + conservation graph
+function renderAlignmentCanvasEnhanced(wrapper, sequences) {
+    if (!sequences || sequences.length === 0) return;
+    wrapper.innerHTML = "";
+
+    const nSeq = sequences.length;
+    const seqLen = sequences[0].seq.length || 1;
+    const W = Math.min(seqLen, 2000);
+    const cellH = Math.max(4, Math.min(10, Math.floor(300 / nSeq)));
+    const RULER_H = 28;
+    const CONS_H = 64;
+    const LABEL_W = 0; // no per-row labels (overview mode)
+
+    // --- scrollable outer container ---
+    const outer = document.createElement("div");
+    outer.style.cssText = "overflow-x:auto;overflow-y:auto;max-height:480px;background:#f9fafb;border-radius:8px;";
+    wrapper.appendChild(outer);
+
+    // --- inner container (natural width) ---
+    const inner = document.createElement("div");
+    inner.style.cssText = `width:${W}px;position:relative;`;
+    outer.appendChild(inner);
+
+    const colorCache = {};
+    const getColor = (ch) => {
+        if (!colorCache[ch]) colorCache[ch] = hexToRgb(NT_COLORS[ch.toUpperCase()] || "#9ca3af");
+        return colorCache[ch];
+    };
+
+    // === RULER CANVAS ===
+    const ruler = document.createElement("canvas");
+    ruler.width = W;
+    ruler.height = RULER_H;
+    ruler.style.cssText = `display:block;width:${W}px;height:${RULER_H}px;position:sticky;top:0;z-index:2;background:#f3f4f6;`;
+    inner.appendChild(ruler);
+
+    const rctx = ruler.getContext("2d");
+    rctx.fillStyle = "#f3f4f6";
+    rctx.fillRect(0, 0, W, RULER_H);
+    rctx.strokeStyle = "#9ca3af";
+    rctx.fillStyle = "#6b7280";
+    rctx.font = "9px monospace";
+    rctx.textAlign = "left";
+
+    // Aim for ~8 ticks visible
+    const rawStep = seqLen / 8;
+    const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+    const tick = Math.ceil(rawStep / mag) * mag;
+
+    for (let pos = 0; pos <= seqLen; pos += tick) {
+        const px = Math.floor(pos * W / seqLen);
+        rctx.strokeStyle = "#9ca3af";
+        rctx.lineWidth = 1;
+        rctx.beginPath();
+        rctx.moveTo(px + 0.5, RULER_H - 10);
+        rctx.lineTo(px + 0.5, RULER_H - 2);
+        rctx.stroke();
+        if (pos > 0) {
+            rctx.fillStyle = "#6b7280";
+            rctx.fillText(pos.toLocaleString(), px + 2, RULER_H - 12);
+        }
+    }
+
+    // === MAIN ALIGNMENT CANVAS ===
+    const mainH = nSeq * cellH;
+    const main = document.createElement("canvas");
+    main.width = W;
+    main.height = mainH;
+    main.style.cssText = `display:block;width:${W}px;height:${mainH}px;image-rendering:pixelated;`;
+    inner.appendChild(main);
+
+    const mctx = main.getContext("2d");
+    const mimg = mctx.createImageData(W, mainH);
+    const mdata = mimg.data;
+
+    for (let si = 0; si < nSeq; si++) {
+        const seq = sequences[si].seq.toUpperCase();
+        const rowY = si * cellH;
+        for (let px = 0; px < W; px++) {
+            const pi = Math.floor(px * seqLen / W);
+            const c = getColor(seq[pi] || "");
+            for (let dy = 0; dy < cellH; dy++) {
+                const idx = ((rowY + dy) * W + px) * 4;
+                mdata[idx] = c.r;
+                mdata[idx + 1] = c.g;
+                mdata[idx + 2] = c.b;
+                mdata[idx + 3] = 255;
+            }
+        }
+    }
+    mctx.putImageData(mimg, 0, 0);
+
+    // === CONSERVATION CANVAS ===
+    const cons = document.createElement("canvas");
+    cons.width = W;
+    cons.height = CONS_H;
+    cons.style.cssText = `display:block;width:${W}px;height:${CONS_H}px;background:#f9fafb;border-top:1px solid #e5e7eb;`;
+    inner.appendChild(cons);
+
+    const cctx = cons.getContext("2d");
+    cctx.fillStyle = "#f9fafb";
+    cctx.fillRect(0, 0, W, CONS_H);
+
+    // Label
+    cctx.font = "8px sans-serif";
+    cctx.fillStyle = "#9ca3af";
+    cctx.fillText("Conservation", 2, 9);
+
+    const BAR_AREA = CONS_H - 14;
+
+    for (let px = 0; px < W; px++) {
+        const pi = Math.floor(px * seqLen / W);
+        // Count bases at this position
+        const counts = {};
+        let total = 0;
+        for (let si = 0; si < nSeq; si++) {
+            const ch = sequences[si].seq[pi]?.toUpperCase();
+            if (ch && ch !== "-" && ch !== "?") {
+                counts[ch] = (counts[ch] || 0) + 1;
+                total++;
+            }
+        }
+        if (total === 0) continue;
+        const maxCount = Math.max(...Object.values(counts));
+        const score = maxCount / nSeq; // 0..1
+
+        let color;
+        if (score >= 0.8) color = "#16a34a"; // green
+        else if (score >= 0.5) color = "#d97706"; // amber
+        else color = "#dc2626"; // red
+
+        const barH = Math.round(score * BAR_AREA);
+        cctx.fillStyle = color;
+        cctx.fillRect(px, CONS_H - 2 - barH, 1, barH);
+    }
+
+    // baseline
+    cctx.strokeStyle = "#d1d5db";
+    cctx.lineWidth = 1;
+    cctx.beginPath();
+    cctx.moveTo(0, CONS_H - 2);
+    cctx.lineTo(W, CONS_H - 2);
+    cctx.stroke();
+
+    // === INTERACTIVE TOOLTIP on main canvas ===
+    const tooltip = document.createElement("div");
+    tooltip.style.cssText = "position:absolute;pointer-events:none;background:rgba(30,30,30,0.85);color:#fff;font-size:11px;padding:3px 8px;border-radius:5px;white-space:nowrap;display:none;z-index:10;max-width:320px;overflow:hidden;text-overflow:ellipsis;";
+    inner.style.position = "relative";
+    inner.appendChild(tooltip);
+
+    main.style.cursor = "crosshair";
+    main.addEventListener("mousemove", (e) => {
+        const rect = main.getBoundingClientRect();
+        const canvasY = e.clientY - rect.top;
+        // Adjust for devicePixelRatio if needed (canvas CSS vs pixel)
+        const scaleY = main.height / rect.height;
+        const row = Math.floor((canvasY * scaleY) / cellH);
+        if (row >= 0 && row < nSeq) {
+            tooltip.style.display = "block";
+            tooltip.textContent = sequences[row].name;
+            // Position relative to inner div
+            const innerRect = inner.getBoundingClientRect();
+            const tx = Math.min(e.clientX - innerRect.left + 10, W - 5);
+            const ty = e.clientY - innerRect.top - 24;
+            tooltip.style.left = tx + "px";
+            tooltip.style.top = ty + "px";
+        }
+    });
+    main.addEventListener("mouseleave", () => { tooltip.style.display = "none"; });
+}
+
+function renderAlignmentResults(markerResults, hasTrimal) {
+    const accordion = document.getElementById("alignmentResultsAccordion");
+    if (!accordion) return;
+    accordion.innerHTML = "";
+    document.getElementById("alignmentResults").classList.remove("hidden");
+
+    for (const r of markerResults) {
+        const id = "marker-result-" + r.marker.replace(/[^a-zA-Z0-9]/g, "_");
+        const trimStat = r.trimmedStats
+            ? `<div class="text-center"><div class="text-xs text-gray-400 mb-0.5">Trimmed</div><div class="text-xs font-semibold text-gray-700">${r.trimmedStats.numSeqs} seq · ${r.trimmedStats.length} bp</div><div class="text-xs text-gray-400">${r.trimmedStats.gapPct}% gaps</div></div>`
+            : `<div class="text-center text-xs text-gray-300 italic">No trimming</div>`;
+
+        const tabs = [
+            { key: "raw", label: "Raw", icon: "fa-dna" },
+            { key: "aligned", label: "Aligned", icon: "fa-align-left" },
+            ...(r.trimmedStats ? [{ key: "trimmed", label: "Trimmed", icon: "fa-scissors" }] : []),
+        ];
+
+        const tabBtns = tabs.map((t, i) =>
+            `<button class="result-tab-btn px-3 py-1 rounded-lg text-xs font-medium transition-colors ${i === 0 ? 'bg-splace-blue-600 text-white' : 'text-gray-500 hover:bg-gray-100'}"
+                data-marker="${r.marker}" data-tab="${t.key}">
+                <i class="fa-solid ${t.icon} mr-1"></i>${t.label}
+             </button>`
+        ).join("");
+
+        const panels = tabs.map((t, i) => {
+            if (t.key === "raw") {
+                return `<div id="${id}-${t.key}" class="result-tab-panel ${i !== 0 ? 'hidden' : ''}">
+                    <canvas id="canvas-${id}-${t.key}" class="w-full rounded" style="image-rendering:pixelated;display:block;"></canvas>
+                </div>`;
+            }
+            return `<div id="${id}-${t.key}" class="result-tab-panel ${i !== 0 ? 'hidden' : ''}">
+                <div id="vizwrap-${id}-${t.key}"></div>
+            </div>`;
+        }).join("");
+
+        const panel = document.createElement("div");
+        panel.className = "bg-white rounded-xl border border-gray-200 overflow-hidden";
+        panel.innerHTML = `
+            <button class="w-full px-5 py-3 flex items-center justify-between text-left hover:bg-gray-50 transition-colors" onclick="toggleMarkerResult('${id}')">
+                <div class="flex items-center gap-3">
+                    <span class="step-badge badge-done" style="font-size:0.55rem;width:1rem;height:1rem;">✓</span>
+                    <span class="font-semibold text-sm text-gray-800">${r.marker}</span>
+                    <span class="text-xs text-gray-400">${r.alignedStats?.numSeqs ?? "?"} seq · ${r.alignedStats?.length ?? "?"}bp aligned</span>
+                </div>
+                <i id="${id}-chevron" class="fa-solid fa-chevron-down text-gray-400 text-xs transition-transform"></i>
+            </button>
+            <div id="${id}-body" class="hidden px-5 pb-5">
+                <div class="grid grid-cols-3 gap-3 mb-4 pt-2">
+                    <div class="text-center"><div class="text-xs text-gray-400 mb-0.5">Raw</div><div class="text-xs font-semibold text-gray-700">${r.rawStats?.numSeqs ?? "?"} seq · ${r.rawStats?.avgLen ?? "?"}bp avg</div></div>
+                    <div class="text-center"><div class="text-xs text-gray-400 mb-0.5">Aligned</div><div class="text-xs font-semibold text-gray-700">${r.alignedStats?.numSeqs ?? "?"} seq · ${r.alignedStats?.length ?? "?"}bp</div><div class="text-xs text-gray-400">${r.alignedStats?.gapPct ?? "?"}% gaps</div></div>
+                    ${trimStat}
+                </div>
+                <div class="flex gap-2 mb-3">${tabBtns}</div>
+                <div class="bg-gray-50 rounded-lg p-2">${panels}</div>
+            </div>`;
+        accordion.appendChild(panel);
+
+        // Store sequences on wrappers for lazy rendering
+        const lazyRender = (key, content, enhanced) => {
+            const wrap = document.getElementById(enhanced ? `vizwrap-${id}-${key}` : `canvas-${id}-${key}`);
+            if (!wrap || wrap.dataset.rendered) return;
+            wrap.dataset.rendered = "1";
+            const seqs = parseFasta(content);
+            if (enhanced) renderAlignmentCanvasEnhanced(wrap, seqs);
+            else renderAlignmentCanvas(wrap, seqs);
+        };
+
+        // Render raw tab immediately (it's visible by default)
+        requestAnimationFrame(() => {
+            if (r.rawContent) lazyRender("raw", r.rawContent, false);
+        });
+
+        // Store content references for lazy rendering on tab switch / accordion open
+        panel._markerData = {
+            id, rawContent: r.rawContent,
+            alignedContent: r.alignedContent,
+            trimmedContent: r.trimmedContent,
+        };
+    }
+
+    // Tab switching — lazy render enhanced tabs when first shown
+    accordion.querySelectorAll(".result-tab-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const marker = btn.dataset.marker;
+            const tab = btn.dataset.tab;
+            const id2 = "marker-result-" + marker.replace(/[^a-zA-Z0-9]/g, "_");
+            btn.closest(".flex").querySelectorAll(".result-tab-btn").forEach(b => {
+                b.className = "result-tab-btn px-3 py-1 rounded-lg text-xs font-medium transition-colors text-gray-500 hover:bg-gray-100";
+            });
+            btn.className = "result-tab-btn px-3 py-1 rounded-lg text-xs font-medium transition-colors bg-splace-blue-600 text-white";
+            btn.closest(".flex").nextElementSibling.querySelectorAll(".result-tab-panel").forEach(p => p.classList.add("hidden"));
+            const panelEl = document.getElementById(`${id2}-${tab}`);
+            panelEl?.classList.remove("hidden");
+
+            // Lazy render enhanced views
+            const panelDiv = btn.closest(".bg-white");
+            const data = panelDiv?._markerData;
+            if (!data) return;
+            if (tab === "aligned" && data.alignedContent) {
+                const wrap = document.getElementById(`vizwrap-${data.id}-aligned`);
+                if (wrap && !wrap.dataset.rendered) {
+                    wrap.dataset.rendered = "1";
+                    requestAnimationFrame(() => renderAlignmentCanvasEnhanced(wrap, parseFasta(data.alignedContent)));
+                }
+            }
+            if (tab === "trimmed" && data.trimmedContent) {
+                const wrap = document.getElementById(`vizwrap-${data.id}-trimmed`);
+                if (wrap && !wrap.dataset.rendered) {
+                    wrap.dataset.rendered = "1";
+                    requestAnimationFrame(() => renderAlignmentCanvasEnhanced(wrap, parseFasta(data.trimmedContent)));
+                }
+            }
+        });
+    });
+}
+
+window.toggleMarkerResult = function (id) {
+    const body = document.getElementById(id + "-body");
+    const chevron = document.getElementById(id + "-chevron");
+    const open = body.classList.toggle("hidden");
+    chevron.style.transform = open ? "" : "rotate(180deg)";
+};
+
+// ========================================================================
+// NEXUS Concatenation
+// ========================================================================
+
+// State for concatenation
+let _lastMarkerResultsUI = []; // mirror of backend results, kept in JS
+
+function buildConcat(markerResults, useTrimmed, allowMissing) {
+    // Collect all species and their sequences per gene
+    const geneOrder = markerResults.map(r => r.marker);
+    const geneSeqs = {};   // gene → {speciesName → sequence}
+    const geneLens = {};   // gene → alignment length
+
+    for (const r of markerResults) {
+        const content = useTrimmed && r.trimmedContent ? r.trimmedContent : r.alignedContent;
+        if (!content) continue;
+        const seqs = parseFasta(content);
+        if (!seqs.length) continue;
+        geneLens[r.marker] = seqs[0].seq.length;
+        geneSeqs[r.marker] = {};
+        for (const s of seqs) {
+            geneSeqs[r.marker][s.name] = s.seq;
+        }
+    }
+
+    // Union of all species
+    const allSpecies = [...new Set(
+        Object.values(geneSeqs).flatMap(m => Object.keys(m))
+    )].sort();
+
+    // Check for missing
+    const missingReport = []; // [{species, genes[]}]
+    for (const sp of allSpecies) {
+        const missing = geneOrder.filter(g => geneSeqs[g] && !geneSeqs[g][sp]);
+        if (missing.length) missingReport.push({ species: sp, genes: missing });
+    }
+
+    // Determine final species list
+    let finalSpecies;
+    if (allowMissing) {
+        finalSpecies = allSpecies; // keep all, fill missing with ?
+    } else {
+        const removedSet = new Set(missingReport.map(m => m.species));
+        finalSpecies = allSpecies.filter(sp => !removedSet.has(sp));
+    }
+
+    // Concatenate
+    const alignedSeqs = [];
+    const partitions = [];
+    let pos = 1;
+
+    for (const sp of finalSpecies) {
+        let concat = "";
+        for (const gene of geneOrder) {
+            if (!geneSeqs[gene]) continue;
+            const len = geneLens[gene];
+            concat += (geneSeqs[gene][sp] || "?".repeat(len));
+        }
+        alignedSeqs.push({ name: sp, seq: concat });
+    }
+
+    for (const gene of geneOrder) {
+        if (!geneSeqs[gene]) continue;
+        const len = geneLens[gene];
+        partitions.push({ gene, start: pos, end: pos + len - 1, len });
+        pos += len;
+    }
+
+    return { alignedSeqs, partitions, totalLen: pos - 1, species: finalSpecies, missingReport, removedCount: allowMissing ? 0 : missingReport.length };
+}
+
+function buildNexusString(alignedSeqs, partitions, outgroups) {
+    const ntax = alignedSeqs.length;
+    const nchar = alignedSeqs[0]?.seq.length || 0;
+    // Pad names for alignment
+    const maxNameLen = Math.max(...alignedSeqs.map(s => s.name.length));
+    const matrix = alignedSeqs.map(s =>
+        `    ${s.name.padEnd(maxNameLen + 2)}${s.seq}`
+    ).join("\n");
+
+    const charsets = partitions.map(p =>
+        `    charset ${p.gene} = ${p.start}-${p.end};`
+    ).join("\n");
+
+    const outgroupBlock = outgroups && outgroups.length
+        ? `\nbegin assumptions;\n    outgroup ${outgroups.join(" ")};\nend;\n`
+        : "";
+
+    return `#NEXUS
+
+begin data;
+    dimensions ntax=${ntax} nchar=${nchar};
+    format datatype=dna missing=? gap=-;
+    matrix
+${matrix}
+    ;
+end;
+
+begin sets;
+${charsets}
+end;
+${outgroupBlock}`;
+}
+
+function buildPartitionString(partitions) {
+    return partitions.map(p => `DNA, ${p.gene} = ${p.start}-${p.end}`).join("\n");
+}
+
+function renderConcatSection(markerResults, hasTrimal) {
+    _lastMarkerResultsUI = markerResults;
+    const sec = document.getElementById("concatSection");
+    if (!sec) return;
+    sec.classList.remove("hidden");
+    sec.scrollIntoView({ behavior: "smooth", block: "start" });
+
+    // Show trimmed option only if trimAl was run
+    const trimmedOption = document.getElementById("concatTrimmedOption");
+    if (trimmedOption) trimmedOption.classList.toggle("hidden", !hasTrimal);
+    // If no trimAl, force aligned
+    if (!hasTrimal) {
+        const noRadio = document.getElementById("concatUseTrimmedNo");
+        if (noRadio) noRadio.checked = true;
+    }
+
+    // Populate outgroup list from all species across markers
+    const speciesSet = new Set();
+    for (const r of markerResults) {
+        const content = r.trimmedContent || r.alignedContent;
+        if (content) parseFasta(content).forEach(s => speciesSet.add(s.name));
+    }
+    const ogList = document.getElementById("outgroupList");
+    if (ogList) {
+        ogList.innerHTML = [...speciesSet].sort().map(sp =>
+            `<label class="flex items-center gap-2 text-xs text-gray-700 cursor-pointer hover:bg-gray-50 px-2 py-1 rounded">
+                <input type="checkbox" class="outgroup-cb rounded text-splace-blue-600" value="${sp.replace(/"/g, '&quot;')}">
+                <span class="truncate">${sp}</span>
+            </label>`
+        ).join("");
+    }
+
+    // Filter outgroup search
+    const ogSearch = document.getElementById("outgroupSearch");
+    if (ogSearch) {
+        ogSearch.addEventListener("input", () => {
+            const q = ogSearch.value.toLowerCase();
+            ogList.querySelectorAll("label").forEach(l => {
+                l.classList.toggle("hidden", !l.textContent.toLowerCase().includes(q));
+            });
+        });
+    }
+}
+
+window.generateNexus = function () {
+    const useTrimmed = document.getElementById("concatUseTrimmedYes")?.checked ?? true;
+    const allowMissing = document.getElementById("concatAllowMissing")?.checked ?? false;
+    const outgroups = [...document.querySelectorAll(".outgroup-cb:checked")].map(c => c.value);
+
+    const result = buildConcat(_lastMarkerResultsUI, useTrimmed, allowMissing);
+
+    const warn = document.getElementById("concatMissingWarning");
+    warn.classList.add("hidden");
+    warn.className = "text-xs rounded-lg px-3 py-2 border";
+
+    if (result.missingReport.length) {
+        if (allowMissing) {
+            warn.className += " text-amber-700 bg-amber-50 border-amber-200";
+            warn.textContent = `${result.missingReport.length} species have missing genes — filled with "?" in the matrix.`;
+        } else {
+            warn.className += " text-amber-700 bg-amber-50 border-amber-200";
+            const names = result.missingReport.map(m => m.species).join(", ");
+            warn.textContent = `${result.removedCount} species removed from matrix due to missing genes: ${names}. Enable "Allow missing sequences" to keep them with "?" characters.`;
+        }
+        warn.classList.remove("hidden");
+    }
+
+    const nexus = buildNexusString(result.alignedSeqs, result.partitions, outgroups);
+    const partition = buildPartitionString(result.partitions);
+
+    // Store for IQ-TREE section
+    window._nexusData = { nexus, partition, result, outgroups };
+
+    // Show partition table
+    const tbl = document.getElementById("partitionTable");
+    if (tbl) {
+        tbl.innerHTML = `
+            <table class="w-full text-xs border-collapse">
+                <thead><tr class="bg-gray-100">
+                    <th class="text-left px-3 py-2 font-semibold text-gray-600">Gene</th>
+                    <th class="text-right px-3 py-2 font-semibold text-gray-600">Start</th>
+                    <th class="text-right px-3 py-2 font-semibold text-gray-600">End</th>
+                    <th class="text-right px-3 py-2 font-semibold text-gray-600">Length (bp)</th>
+                </tr></thead>
+                <tbody>
+                    ${result.partitions.map((p, i) => `
+                        <tr class="${i % 2 === 0 ? '' : 'bg-gray-50'}">
+                            <td class="px-3 py-1.5 font-medium text-splace-blue-700">${p.gene}</td>
+                            <td class="px-3 py-1.5 text-right text-gray-600">${p.start}</td>
+                            <td class="px-3 py-1.5 text-right text-gray-600">${p.end}</td>
+                            <td class="px-3 py-1.5 text-right text-gray-600">${p.len}</td>
+                        </tr>`).join("")}
+                    <tr class="border-t border-gray-200 font-semibold">
+                        <td class="px-3 py-1.5 text-gray-700">Total</td>
+                        <td class="px-3 py-1.5 text-right text-gray-500">—</td>
+                        <td class="px-3 py-1.5 text-right text-gray-500">—</td>
+                        <td class="px-3 py-1.5 text-right text-gray-700">${result.totalLen}</td>
+                    </tr>
+                </tbody>
+            </table>`;
+        tbl.classList.remove("hidden");
+    }
+
+    // Show summary
+    const summary = document.getElementById("concatSummary");
+    if (summary) {
+        summary.textContent = `${result.alignedSeqs.length} species · ${result.partitions.length} genes · ${result.totalLen} bp`;
+        summary.classList.remove("hidden");
+    }
+
+    // Update step badge for concat
+    setBadge("step-concat-badge", "done");
+
+    // Show IQ-TREE section
+    renderIqtreeSection(outgroups);
+};
+
+window.downloadNexus = function () {
+    if (!window._nexusData) return;
+    const blob = new Blob([window._nexusData.nexus], { type: "text/plain" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "concatenated.nex";
+    a.click();
+};
+
+window.downloadPartition = function () {
+    if (!window._nexusData) return;
+    const blob = new Blob([window._nexusData.partition], { type: "text/plain" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "partitions.txt";
+    a.click();
+};
+
+// ========================================================================
+// IQ-TREE3
+// ========================================================================
+
+function renderIqtreeSection(outgroups) {
+    const sec = document.getElementById("iqtreeSection");
+    if (!sec) return;
+    sec.classList.remove("hidden");
+    sec.scrollIntoView({ behavior: "smooth", block: "start" });
+
+    // Show selected outgroups
+    const ogLabel = document.getElementById("iqtreeOutgroupLabel");
+    if (ogLabel) {
+        ogLabel.textContent = outgroups && outgroups.length
+            ? outgroups.join(", ")
+            : "None selected";
+    }
+
+    // Pre-fill thread count
+    if (window.electronAPI?.getCpuCount) {
+        window.electronAPI.getCpuCount().then(n => {
+            const t = document.getElementById("iqtreeThreads");
+            if (t && !t.value) t.value = Math.max(1, n - 2);
+        });
+    }
+}
+
+window.runIqtree = async function () {
+    if (!window._nexusData || !window.electronAPI) return;
+
+    const model = document.getElementById("iqtreeModel")?.value || "TEST";
+    const bootstrap = document.getElementById("iqtreeBootstrap")?.value || "-B 1000";
+    const threads = parseInt(document.getElementById("iqtreeThreads")?.value) || 4;
+    const extra = document.getElementById("iqtreeExtra")?.value || "";
+    const perGene = document.getElementById("iqtreePerGene")?.checked ?? false;
+    const outgroup = window._nexusData.outgroups;
+
+    const params = [
+        ...(model === "custom"
+            ? ["-m", document.getElementById("iqtreeModelCustom")?.value || "GTR+G"]
+            : ["-m", model]),
+        ...bootstrap.split(" ").filter(Boolean),
+        ...(extra ? extra.split(/\s+/).filter(Boolean) : []),
+    ];
+
+    if (!window.electronAPI.runIqtree) {
+        alert("IQ-TREE IPC not available. Please restart the app.");
+        return;
+    }
+
+    // Build per-gene FASTA map (trimmed preferred)
+    let geneFiles = null;
+    if (perGene) {
+        geneFiles = {};
+        const useTrimmed = document.getElementById("concatUseTrimmedYes")?.checked ?? true;
+        for (const r of _lastMarkerResultsUI) {
+            const content = (useTrimmed && r.trimmedContent) ? r.trimmedContent : r.alignedContent;
+            if (content) geneFiles[r.marker] = content;
+        }
+    }
+
+    openIqtreeModal();
+
+    window.electronAPI.runIqtree({
+        nexus: window._nexusData.nexus,
+        partition: window._nexusData.partition,
+        params,
+        threads,
+        outgroup,
+        perGene,
+        geneFiles,
+    });
+};
+
+function openIqtreeModal() {
+    const modal = document.getElementById("iqtreeModal");
+    if (!modal) return;
+    modal.classList.remove("hidden");
+    document.getElementById("iqtreeModalLog").textContent = "";
+    document.getElementById("iqtreeModalTitle").textContent = "Running IQ-TREE…";
+    document.getElementById("iqtreeModalClose").classList.add("hidden");
+    document.getElementById("iqtreeModalIcon").className = "fa-solid fa-spinner fa-spin text-splace-blue-600 text-lg";
+}
+
+if (window.electronAPI?.onIqtreeProgress) {
+    window.electronAPI.onIqtreeProgress((data) => {
+        const log = document.getElementById("iqtreeModalLog");
+        if (log && data.message) {
+            log.textContent += data.message + "\n";
+            log.scrollTop = log.scrollHeight;
+        }
+    });
+}
+
+if (window.electronAPI?.onIqtreeDone) {
+    window.electronAPI.onIqtreeDone((result) => {
+        const icon = document.getElementById("iqtreeModalIcon");
+        const title = document.getElementById("iqtreeModalTitle");
+        const close = document.getElementById("iqtreeModalClose");
+
+        if (result.success) {
+            icon.className = "fa-solid fa-check text-green-600 text-lg";
+            title.textContent = "IQ-TREE analysis complete";
+        } else {
+            icon.className = "fa-solid fa-xmark text-red-600 text-lg";
+            title.textContent = "IQ-TREE failed";
+        }
+        close.classList.remove("hidden");
+        close.onclick = () => {
+            document.getElementById("iqtreeModal").classList.add("hidden");
+            if (result.success) {
+                setBadge("step-iqtree-badge", "done");
+                showIqtreeResults(result);
+            }
+        };
+    });
+}
+
+function showIqtreeResults(result) {
+    const res = document.getElementById("iqtreeResults");
+    if (!res) return;
+    res.classList.remove("hidden");
+
+    const fileList = document.getElementById("iqtreeFileList");
+    if (fileList && result.files) {
+        fileList.innerHTML = result.files.map(f =>
+            `<div class="flex items-center gap-2 text-xs text-gray-700 py-1 border-b border-gray-100 last:border-0">
+                <i class="fa-solid fa-file-code text-splace-blue-400 w-4"></i>
+                <span class="font-mono truncate">${f}</span>
+            </div>`
+        ).join("");
+    }
+
+    // Per-gene summary
+    if (result.geneResults && result.geneResults.length) {
+        const geneDiv = document.getElementById("iqtreeGeneResults");
+        if (geneDiv) {
+            geneDiv.classList.remove("hidden");
+            geneDiv.innerHTML = `
+                <p class="text-xs font-semibold text-gray-700 mb-2">Per-gene trees</p>
+                <div class="grid grid-cols-3 gap-1.5">
+                    ${result.geneResults.map(r =>
+                `<div class="flex items-center gap-1.5 text-xs px-2 py-1 rounded-lg ${r.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}">
+                            <i class="fa-solid ${r.success ? 'fa-check' : 'fa-xmark'} w-3"></i>
+                            <span>${r.gene}</span>
+                        </div>`
+            ).join("")}
+                </div>`;
+        }
+    }
+
+    document.getElementById("iqtreeOutputDir").textContent = result.outputDir || "";
+    window._iqtreeOutputDir = result.outputDir;
+}
+
+window.saveIqtreeZip = async function () {
+    if (!window.electronAPI?.saveZip) return;
+    const dirs = [window._alignmentOutputDir, window._iqtreeOutputDir].filter(Boolean);
+    if (!dirs.length) return;
+    const result = await window.electronAPI.saveZip({
+        sourceDirs: dirs,
+        suggestedName: "SPLACE_results.zip",
+    });
+    if (result.cancelled) return;
+    if (result.success) {
+        alert(`Saved: ${result.filePath}`);
+    } else {
+        alert(`Error creating ZIP: ${result.error}`);
+    }
+};
+
